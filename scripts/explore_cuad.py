@@ -10,10 +10,13 @@ from pprint import PrettyPrinter
 from IPython.lib.pretty import pprint
 from transformers import AutoTokenizer
 import matplotlib.pyplot as plt
+from dotenv.main import dotenv_values
 # %%
-cuad_dir = Path('/storage/rhshui/workspace/datasets/legal/CUAD_v1')
+# some variables of local paths
+ENVS = dotenv_values('../.env')
+cuad_dir = Path(ENVS['CUAD_PATH'])
 # %%
-llama_tk = AutoTokenizer.from_pretrained('/storage_fast/rhshui/llm/llama2_hf/llama-2-7b')
+llama_tk = AutoTokenizer.from_pretrained(ENVS['LLAMA2_7B'])
 # %%
 class CUAD_Reader:
     def __init__(self, data_dir):
@@ -38,6 +41,8 @@ _ = plt.hist(cont_lens, bins = 50)
 _ = plt.boxplot(cont_lens)
 # %%
 # convert filename to match the `title` in squad json file
+def remove_suffix(text):
+    return '.'.join(text.split('.')[:-1])
 def convert_filename(s):
     # remove suffix of .pdf .PDF .PDF'
     s = '.'.join(s.split('.')[:-1])
@@ -49,6 +54,7 @@ def convert_filename(s):
     s = s.removesuffix('-')
     return s
 
+# %%
 if 'name' not in master_clauses.columns:
     master_clauses.insert(0, column = 'name', value = None)
 master_clauses['name'] = master_clauses['Filename'].apply(convert_filename)
@@ -59,9 +65,9 @@ all_clauses = master_clauses.columns[2:][::2]
 
 # %%
 # assert each contract title in josn file can be found
-for line in master_clauses.iter_rows:
-    print(line)
-    break
+for _, line in master_clauses.iterrows():
+    # assert remove_suffix(line['Filename']) in contracts_map, line['Filename']
+    assert line['name'] in contracts_map, line['name']
 # %%
 def display_column(col):
     """Show some examples of col and col answer"""
@@ -154,4 +160,32 @@ for i, s_d in enumerate(qa_data):
             for k in range(start, end):
                 seq_type[k].append(c_type)
     print(len([k for k in seq_type if len(k) > 1]))
+# %%
+sample = qa_data[15]
+para = sample['paragraphs'][0]
+doc = para['context']
+# %%
+idx = [i for i, ans in enumerate(para['qas']) if 'Warranty' in ans['question']][0]
+idx = [i for i, ans in enumerate(para['qas']) if 'Ip Ownership Assignment' in ans['question']][0]
+# %%
+clauses = [re.search(r'\"(.*?)\"', q['question']).group(1) for q in qa_data[0]['paragraphs'][0]['qas']]
+# %%
+c_id = [i for i,c in enumerate(clauses) if 'warranty' in c.lower()][0]
+c_id = clauses.index('Ip Ownership Assignment')
+# %%
+part = [d for d in qa_data if not d['paragraphs'][0]['qas'][c_id]['is_impossible']]
+print(len(part))
+# %%
+doc = part[0]['paragraphs'][0]['context']
+qa = part[0]['paragraphs'][0]['qas'][c_id]
+print(qa)
+# %%
+def clean_space(s):
+    return re.sub(r'([ ])+', ' ', s)
+# %%
+answers = sorted(qa['answers'], key = lambda k: k['answer_start'])
+for a in answers:
+    a['text'] = clean_space(a['text'])
+# %%
+print(clean_space(doc[answers[0]['answer_start']-500: answers[0]['answer_start']+1000]))
 # %%
