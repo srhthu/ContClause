@@ -12,7 +12,6 @@ import re
 import pickle
 
 from cont_gen.data_process import cut_doc
-from cont_gen.data_process.cut_doc import split_by_whitespace, word_to_subword
 # %%
 # reload the module if changed
 reload(cut_doc)

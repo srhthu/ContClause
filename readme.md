@@ -1,3 +1,4 @@
+## CUAD Data
 Data Format of the `CUAD_v1.json`:
 
 ```
@@ -31,4 +32,12 @@ Output is a list of dict to store tokenized information:
 - token_to_char (`List[Tuple[int, int]]`): record the char span of every token. (End not included) 
 
 ### Build Features for QA Model
+1 Contract -> 41 Example -> x positive features and x negtive features.
+
 Each feature comprise a segment (window), a question and the answer (span position).
+
+Run 
+```Bash
+python -m cont_gen.data_process.build_qa_feature --doc_tk_path ./data/doc/doc_tokens_roberta_rm.pkl --output_path ./data/qa_features/qa_roberta.pkl --tokenizer_path roberta-base
+```
+
