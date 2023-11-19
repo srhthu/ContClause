@@ -1,0 +1,125 @@
+.plain-text{
+    white-space: pre-wrap;
+    text-align: justify;
+}
+
+span.highlight{
+    background-color: DarkTurquoise ;
+    color: black;
+}
+
+button.missing{
+    background-color: grey;
+}
+
+body {
+    overflow-x:hidden;
+}
+
+.inline {
+    display: inline-block;
+}
+
+#jump {
+    margin: 0 20px 0 20px;
+}
+
+#ipt_index {
+    width: 60px;
+    margin: 0 10px 0 20px;
+}
+
+.flex-contain {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+#clause_sel{
+    max-width: 250px;
+    max-height: 90vh;
+    overflow-x:scroll;
+    overflow-y: scroll;
+}
+
+#info{
+    font-size: 1.2rem
+}
+
+#display {
+    overflow-y: scroll;
+    max-height:97vh;
+}
+
+#contract{
+    border: 2px solid grey;
+    padding: 5px 5px 5px 5px;
+    
+}
+
+label {
+    font-weight: 600;
+}
+
+#right-pannel{
+    max-width: 260px;
+}
+
+.span-hl-0{
+    
+}
+
+.span-hl-1{
+    border: 2px solid orange;
+}
+
+.span-hl-2{
+    border: 2px solid deeppink;
+}
+
+.span-hl-1:hover {
+    border: 2px solid gold;
+    cursor: pointer;
+    background-color: beige  ;
+}
+
+.span-hl-2:hover {
+    border: 2px solid hotpink;
+    cursor: pointer;
+    background-color: beige  ;
+}
+
+#span-info.disabled {
+    display: none;
+}
+
+#span-info {
+    position: fixed;
+    border: 2px solid grey;
+    opacity: 0.9;
+    background-color: aquamarine;
+    padding: 5px;
+    font-size: large;
+}
+
+#left-panel{
+    margin-left:10px;
+    max-width: 200px;
+}
+
+#history {
+    max-height: 350px;
+    overflow-y: scroll;
+    overflow-x:scroll;
+}
+
+#history a{
+    display: flex;
+}
+
+#history span:nth-child(2){
+    white-space: nowrap;
+    margin-left: 3px;
+}
+

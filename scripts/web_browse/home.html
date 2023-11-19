@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Data Viewer</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://code.jquery.com/jquery-3.0.0.min.js"></script>
+        <script type="text/javascript" src="/script.js"></script>
+        <link rel="stylesheet" type="text/css" href="/style.css">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    </head>
+
+    <body>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+
+        <div class="row align-items-start" style="max-height:100%">
+            
+            <div class="col" id="left-panel">
+                <div class>
+                    <h4>History</h4>
+                </div>
+                <div id="history" >
+                    <!-- The left pannel, show history -->
+                </div>
+            </div>
+
+            
+            <div id="display" class="col">
+                <!-- The middle pannel, show contract -->
+                <div id="control_index" class="flex-contain">
+                    <!-- control area -->
+                    <div><button id="btn_prev" type="button" class="btn btn-success">Prev</button></div>
+                    <div class="flex-contain" id="jump">
+                        <label class="inline">Contract ID</label>
+                        <input class="form-control inline" type="text" id="ipt_index"  />
+                        <button id="btn_jump" type="button" class="btn btn-link">Go</button>
+                    </div>
+                    <div><button id="btn_next" type="button" class="btn btn-success">Next</button></div>
+                </div>
+                
+                <!-- control font, space-->
+                <div class="flex-contain">
+                    <div class="form-check-inline">
+                        <label class="form-check-label">Show Space </label>
+                        <input type="checkbox" class="form-check-input" id="show_space">
+                    </div>
+                    <div class="form-check-inline">
+                        <div class="inline">
+                            <label for="font-size" class="form-check-label">Font Size: </label> 
+                            <span id="font-size-display"></span>
+                        </div>
+                        <input type="range" class="form-range inline" id="font-size" min="10" max="30">
+                        
+                    </div>
+                </div>
+
+                <div id="info">
+                    <span><b>Title: </b></span>
+                    <span id="contract-title"></span>
+                </div>
+                
+                <div id="contract">
+                    <!-- contract text -->
+                </div>
+            </div>
+
+            <div class="col" id="right-pannel">
+                <div class="row">
+                    <h4>Clause Types</h4>
+                    <span><b>Click</b> to highlight and jump to clauses</span>
+                </div>
+                <div id="clause_sel" class="row">
+                    <!-- The right pannel, select clause type -->
+                </div>
+            </div>
+                    
+            
+        </div>
+    </body>
+
+</html>
