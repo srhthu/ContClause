@@ -42,7 +42,7 @@ from cont_gen.trainer.utils import get_smart_optimizer
 from cont_gen.trainer.train_only_ddp import TrainingArgs, Trainer_Onlytrain_DDP
 # %%
 model = AutoModelForQuestionAnswering.from_pretrained('roberta-base')
-features = pickle.load(open('../data/qa_features/qa_roberta.pkl', 'rb'))
+features = pickle.load(open('../data/features/qa_roberta_train.pkl', 'rb'))
 # %%
 examples = pickle.load(open('../data/examples.pkl', 'rb'))
 id2doc = pickle.load(open('../data/doc/doc_id_text.pkl', 'rb'))

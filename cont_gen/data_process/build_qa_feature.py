@@ -40,16 +40,15 @@ def create_examples(input_data):
                     'doc_id': title,
                     'paragraph_id': pi,
                     'clause_id': cla_id,
+                    'qa_id': qa['id'],
                     'question_text': qa["question"],
                     'is_impossible': qa.get("is_impossible", False),
-                    'answer_spans': answer_spans, # 
+                    'answer_spans': answer_spans, # end not included
                     'answer_texts': [k['text'] for k in qa['answers']]
                 }
 
                 examples.append(example)
     return examples
-
-
 
 def convert_features(
     example, doc_obj,
@@ -156,7 +155,8 @@ def convert_features(
         encoded_dict['end_position'] = end_position
         encoded_dict['is_impossible'] = span_is_impossible
         # identifiers
-        encoded_dict['qas_id'] = (example['doc_id'], example['clause_id'])
+        encoded_dict['doc_info'] = (example['doc_id'], example['clause_id'])
+        encoded_dict['qa_id'] = example['qa_id']
         encoded_dict['example_index'] = 0 # be set later
 
         spans.append(encoded_dict)
@@ -236,9 +236,10 @@ def main():
     import pickle
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--data_file')
     parser.add_argument('--doc_tk_path')
-    parser.add_argument('--output_path')
     parser.add_argument('--tokenizer_path')
+    parser.add_argument('--output_path')
     parser.add_argument('--max_seq_length', type = int, default = 512)
     parser.add_argument('--doc_stride', type = int, default = 256)
     parser.add_argument('--max_query_length', type = int, default = 128)
@@ -247,12 +248,16 @@ def main():
 
     Path(args.output_path).parent.mkdir(exist_ok=True)
     
+    # load qa data
+    qa_data = json.load(open(args.data_file))['data']
+
+    print('Build examples')
+    examples = create_examples(qa_data)
+
     # load doc str
+    print('Load doc data')
     id2doc = pickle.load(open('./data/doc/doc_id_text.pkl', 'rb'))
     id2doc = {k['doc_id']: k['doc'] for k in id2doc}
-
-    # load examples
-    examples = pickle.load(open('./data/examples.pkl', 'rb'))
     
     doc_objs = pickle.load(open(args.doc_tk_path, 'rb'))
     doc_objs = [DocTokens(**k, doc_text = id2doc[k['doc_id']]) for k in doc_objs]

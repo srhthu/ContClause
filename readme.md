@@ -38,7 +38,12 @@ Each feature comprise a segment (window), a question and the answer (span positi
 
 Run 
 ```Bash
-python -m cont_gen.data_process.build_qa_feature --doc_tk_path ./data/doc/doc_tokens_roberta_rm.pkl --output_path ./data/qa_features/qa_roberta.pkl --tokenizer_path roberta-base
+source .env
+python -m cont_gen.data_process.build_qa_feature \
+--data_file ${CUAD_TRAIN} \
+--doc_tk_path ./data/doc/doc_tokens_roberta_rm.pkl \
+--output_path ./data/features/qa_roberta_train.pkl \
+--tokenizer_path roberta-base
 ```
 
 Output is a list of features:
@@ -61,5 +66,11 @@ Output is a list of features:
 
 ### Train QA model with features (No evaluation)
 ```Bash
-python -m cont_gen.train_qa --features data/qa_features/qa_roberta.pkl --base_model roberta-base --output_dir runs/qa/roberta-base_lr1e-4_bs16 --num_epoch 3 --lr 1e-4 --batch_size 16 
+python -m cont_gen.train_qa --features data/features/qa_roberta_train.pkl --base_model roberta-base --output_dir runs/qa/roberta-base_lr1e-4_bs16 --num_epoch 3 --lr 1e-4 --batch_size 16 
 ```
+
+
+## Note
+answer spans can overlap.
+
+408 for train, 102 for test
