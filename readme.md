@@ -41,3 +41,25 @@ Run
 python -m cont_gen.data_process.build_qa_feature --doc_tk_path ./data/doc/doc_tokens_roberta_rm.pkl --output_path ./data/qa_features/qa_roberta.pkl --tokenizer_path roberta-base
 ```
 
+Output is a list of features:
+```
+    input_ids
+    attention_mask
+    token_type_ids
+    seq_len: non-pad token number
+    paragraph_len: context of the document
+    context_offset: start position of context in the input_ids
+    span_start: answer span start token position in the document
+    p_mask: 1 for tokens cannot be answers
+    cls_index: used for impossible span
+    start_position: answer span start token position in the input_ids
+    end_position: answer span end token position in the input_ids
+    is_impossible: whether the window has answer span
+    qas_id: tuple of (doc_id, clause_id)
+    example_index
+```
+
+### Train QA model with features (No evaluation)
+```Bash
+python -m cont_gen.train_qa --features data/qa_features/qa_roberta.pkl --base_model roberta-base --output_dir runs/qa/roberta-base_lr1e-4_bs16 --num_epoch 3 --lr 1e-4 --batch_size 16 
+```
