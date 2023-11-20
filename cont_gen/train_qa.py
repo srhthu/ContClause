@@ -66,7 +66,7 @@ def main():
     trainer = Trainer_Onlytrain_DDP(
         config = config,
         model = model,
-        train_dataset = features[:3000],
+        train_dataset = features,
         collate_fn = CUAD_QA_Collator(),
         output_dir = args.output_dir,
         optimizer = optimizer,
@@ -75,3 +75,5 @@ def main():
 
     trainer.train()
 
+if __name__ == '__main__':
+    main()
