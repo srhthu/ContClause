@@ -100,9 +100,13 @@ Given all prelim predictions, filter top ranking predictions, and get the answer
     token_start # start position in doc tokens
     token_end
     qa_id: to locate the example
+    feature_index
     prob
 ```
-
+Run
+```Bash
+python -m cont_gen.qa_pred --max_answer_length 256 --model_outputs runs/qa/roberta-base_lr1e-4_bs16/checkpoint-12000
+```
 
 ## Note
 answer spans can overlap.
