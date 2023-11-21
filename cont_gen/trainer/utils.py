@@ -2,7 +2,7 @@
 
 import torch
 from collections import defaultdict
-from typing import Dict, Union
+from typing import Dict, Union, Mapping
 
 def group_nodecay_parameters(model, weight_decay = 0.0, no_decay = ['bias', 'LayerNorm.weight']):
     """
@@ -84,3 +84,15 @@ def number2str(x: Union[int, float]):
         return '0.0'
     else:
         return f'{x:.3e}'
+
+def nested_to_cpu(tensors):
+    "Transfer `tensors` to cpu (even if it's a nested list/tuple/dict of tensors)."
+    if isinstance(tensors, (list, tuple)):
+        return type(tensors)(nested_to_cpu(t) for t in tensors)
+    if isinstance(tensors, Mapping):
+        return type(tensors)({k: nested_to_cpu(t) for k, t in tensors.items()})
+
+    t = tensors.cpu()
+    if t.dtype == torch.bfloat16:
+        t = t.to(torch.float32)
+    return t

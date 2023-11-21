@@ -38,6 +38,7 @@ def add_train_args(parser = None):
     parser.add_argument('--num_epoch', type = int)
     parser.add_argument('--batch_size', type = int, default = 8)
     parser.add_argument('--device_batch_size', type = int, default = 16)
+    parser.add_argument('--save_steps', type = int, default = 500)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -60,7 +61,7 @@ def main():
         device_batch_size = args.device_batch_size,
         num_epoch = args.num_epoch,
         logging_steps = 20,
-        save_steps = 500, 
+        save_steps = args.save_steps, 
     )
 
     trainer = Trainer_Onlytrain_DDP(

@@ -66,7 +66,12 @@ Output is a list of features:
 
 ### Train QA model with features (No evaluation)
 ```Bash
-python -m cont_gen.train_qa --features data/features/qa_roberta_train.pkl --base_model roberta-base --output_dir runs/qa/roberta-base_lr1e-4_bs16 --num_epoch 3 --lr 1e-4 --batch_size 16 
+python -m cont_gen.train_qa --features data/features/qa_roberta_train.pkl --base_model roberta-base --output_dir runs/qa/roberta-base_lr1e-4_bs16 --num_epoch 5 --lr 1e-4 --batch_size 16
+```
+
+### Infer QA model
+```Bash
+python -m cont_gen.infer_qa --save_path runs/debug/model_outputs.pkl --model_path roberta-base --features data/features/qa_roberta_test.pkl
 ```
 
 

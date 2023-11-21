@@ -37,9 +37,10 @@ from transformers.trainer_pt_utils import (
     nested_numpify,
     nested_concat
 )
+from transformers import PreTrainedModel
 from accelerate import Accelerator, PartialState
 
-from .utils import AverageTensors, number2str
+from .utils import AverageTensors, number2str, nested_to_cpu
 # from cont_gen.data_loader.dl_qa import Data_Collator
 
 @dataclass
@@ -128,7 +129,7 @@ class Trainer_Onlytrain_DDP:
         self,
         config: TrainingArgs,
         model,
-        train_dataset,
+        train_dataset = None,
         collate_fn = None,
         output_dir = None,
         optimizer = None,
@@ -290,9 +291,52 @@ class Trainer_Onlytrain_DDP:
         #     torch.save(self.scheduler.state_dict(), ckpt_dir / self.SCHEDULER_NAME)
 
     def save_model(self, output_dir: str):
-        torch.save(self.model.state_dict(), Path(output_dir) / self.WEIGHTS_NAME)
+        if isinstance(self.model, PreTrainedModel):
+            self.model.save_pretrained(output_dir, is_main_process = self.accelerator.is_local_main_process)
+        else:
+            torch.save(self.model.state_dict(), Path(output_dir) / self.WEIGHTS_NAME)
 
     def log_args(self):
         self.logger.info('\n' + \
             json.dumps(self.config.__dict__, indent = 4, sort_keys = True))
+    
+    def eval_loop(self, eval_dataset):
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        # prepare for DDP
+        if self.accelerator is None:
+            self.accelerator = Accelerator()
+        model, eval_dl = self.accelerator.prepare(self.model, eval_dataloader)
+
+        all_preds_host = None
+        all_inputs_host = None
+        bar = tqdm(
+            total = len(eval_dl), dynamic_ncols= True, 
+            disable = not self.accelerator.is_local_main_process
+        )
+        for batch in eval_dl:
+            with torch.no_grad():
+                preds = self.compute_preds(model, batch)
+
+            all_preds, all_inputs = self.accelerator.gather_for_metrics((preds, batch))
+            # transfer to cpu to save memory
+            all_preds, all_inputs = nested_to_cpu(all_preds), nested_to_cpu(all_inputs)
+            all_preds_host = (all_preds if all_preds_host is None 
+                              else nested_concat(all_preds_host, all_preds))
+            all_inputs_host = (all_inputs if all_inputs_host is None 
+                               else nested_concat(all_inputs_host, all_inputs))
+            bar.update()
+        bar.close()
+        
+        return all_preds_host, all_inputs_host
+        
+    
+    def get_eval_dataloader(self, eval_dataset):
+        return DataLoader(
+            eval_dataset, 
+            batch_size = self.config.device_batch_size,
+            collate_fn = self.collate_fn
+        )
+    
+    def compute_preds(self, model, batch):
+        return model(**batch)
     
