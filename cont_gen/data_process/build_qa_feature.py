@@ -195,7 +195,8 @@ def process_features(
     tokenizer: PreTrainedTokenizer,
     max_seq_length, 
     doc_stride, 
-    max_query_length 
+    max_query_length,
+    balance: bool = True 
 ):
     """
     convert all examples and do balance sampling.
@@ -218,7 +219,8 @@ def process_features(
             doc_stride = doc_stride,
             max_query_length = max_query_length
         )
-        feats = sample_features(e, feats)
+        if balance:
+            feats = sample_features(e, feats)
 
         for feat in feats:
             feat['example_index'] = i
@@ -240,6 +242,7 @@ def main():
     parser.add_argument('--doc_tk_path')
     parser.add_argument('--tokenizer_path')
     parser.add_argument('--output_path')
+    parser.add_argument('--balance', action = 'store_true')
     parser.add_argument('--max_seq_length', type = int, default = 512)
     parser.add_argument('--doc_stride', type = int, default = 256)
     parser.add_argument('--max_query_length', type = int, default = 128)
@@ -270,9 +273,12 @@ def main():
         examples, doc_objs, tokenizer = tokenizer,
         max_seq_length = args.max_seq_length,
         doc_stride = args.doc_stride,
-        max_query_length = args.max_query_length
+        max_query_length = args.max_query_length,
+        balance = args.balance
     )
     
+    print(f'Total features: {len(features)}')
+
     with open(args.output_path, 'wb') as f:
         pickle.dump(features, f)
 
