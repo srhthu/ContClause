@@ -38,7 +38,7 @@ class CUAD_Trainer(Trainer_Onlytrain_DDP):
 def infer_and_save(ckpt_dir, features, trainer_config, save_path = None):
     if save_path is None:
         # save to the ckpt path
-        save_path = Path(ckpt_dir).parent / MODEL_OUTPUT_FILE
+        save_path = Path(ckpt_dir) / MODEL_OUTPUT_FILE
 
     model = AutoModelForQuestionAnswering.from_pretrained(ckpt_dir)
 
@@ -58,6 +58,7 @@ def infer_and_save(ckpt_dir, features, trainer_config, save_path = None):
         for i in range(len(all_preds[keys[0]]))
     ]
 
+    print(f'Save results to {save_path}')
     with open(save_path, 'wb') as f:
         pickle.dump(results, f)
 

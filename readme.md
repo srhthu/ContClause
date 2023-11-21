@@ -43,8 +43,9 @@ python -m cont_gen.data_process.build_qa_feature \
 --data_file ${CUAD_TRAIN} \
 --doc_tk_path ./data/doc/doc_tokens_roberta_rm.pkl \
 --output_path ./data/features/qa_roberta_train.pkl \
---tokenizer_path roberta-base
+--tokenizer_path roberta-base --balance
 ```
+Remove argument `--balance` when building test features.
 
 Output is a list of features:
 ```
@@ -68,10 +69,38 @@ Output is a list of features:
 ```Bash
 python -m cont_gen.train_qa --features data/features/qa_roberta_train.pkl --base_model roberta-base --output_dir runs/qa/roberta-base_lr1e-4_bs16 --num_epoch 5 --lr 1e-4 --batch_size 16
 ```
+Output:  each result is a dict of 'start_logits', 'end_logits'
 
 ### Infer QA model
 ```Bash
-python -m cont_gen.infer_qa --save_path runs/debug/model_outputs.pkl --model_path roberta-base --features data/features/qa_roberta_test.pkl
+# for debug
+python -m cont_gen.infer_qa --save_path runs/debug/model_outputs.pkl --ckpt roberta-base --features data/features/qa_roberta_test.pkl
+
+# infer all checkpoints
+python -m cont_gen.infer_qa --features data/features/qa_roberta_test.pkl --exp_dir  runs/qa/roberta-base_lr1e-4_bs16
+```
+
+### Compute Predictions
+contract -> examples -> features -> start_logits, end_logits
+
+For each feature, propose n_best start and end indexes, and save all possible combinations as preliminary predictions:
+```
+    start_index
+    end_index
+    start_logit
+    end_logit
+```
+Given all prelim predictions, filter top ranking predictions, and get the answer span text and position
+```
+    text
+    start_logit
+    end_logit
+    char_start
+    char_end
+    token_start # start position in doc tokens
+    token_end
+    qa_id: to locate the example
+    prob
 ```
 
 
@@ -79,3 +108,7 @@ python -m cont_gen.infer_qa --save_path runs/debug/model_outputs.pkl --model_pat
 answer spans can overlap.
 
 408 for train, 102 for test
+
+Features:
+    train: 
+    test: 156623
