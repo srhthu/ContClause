@@ -58,3 +58,23 @@ class QA_Example(DictLike):
             clause = clause_
             answer_i = None
         return title, clause, answer_i
+
+@dataclass
+class QA_Feature(DictLike):
+    """
+    Context window + question + one answer and inputs to models
+    """
+    input_ids: List[int]
+    attention_mask: List[int]
+    token_type_ids: List[int]
+    seq_len: int # non-pad token number
+    paragraph_len: int # length of context window
+    context_offset: int # start position of context in the input_ids
+    span_start: int # answer span start token position in the document
+    p_mask: List[int] # 1 for tokens cannot be answers
+    cls_index: int # used for impossible span
+    start_position: int # answer span start token position in the input_ids
+    end_position: int # answer span end token position in the input_ids
+    is_impossible: bool # whether the window has answer span
+    qa_id: str # {title}_{clause} or {title}_{clause}_{answer_id}
+    example_index: int
