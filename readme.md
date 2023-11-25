@@ -108,11 +108,31 @@ Run
 python -m cont_gen.qa_pred --max_answer_length 256 --model_outputs runs/qa/roberta-base_lr1e-4_bs16/checkpoint-12000
 ```
 
+Output:
+```
+    all_preds
+    score_null
+    pred_text
+```
+
 ## Note
 answer spans can overlap.
 
 408 for train, 102 for test
-
+```
 Features:
-    train: 
-    test: 156623
+    train:
+        examples: 16728
+            has_clause: 5458
+            null: 11270
+        examples_expand: 22450
+        
+        features: 41952
+    
+    test: 
+        examples: 4182 (102 * 41)
+            has_clause: 1244
+            null: 2938     
+        
+        features: 156623
+```
