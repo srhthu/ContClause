@@ -4,11 +4,13 @@ import sys
 from flask import Flask, request, jsonify, make_response
 from dotenv.main import dotenv_values
 from typing import List
+import pickle
+from typing import List, Dict, Tuple
 
 sys.path.insert(0, '../data/')
 from get_atom_span import get_atom_span
 
-def get_cuad_atom_span(data, add_text = True):
+def get_cuad_atom_span(data, pred_spans = {}, add_text = True):
     para_data = data['paragraphs'][0]
     doc = para_data['context']
     all_spans = {}
@@ -20,7 +22,8 @@ def get_cuad_atom_span(data, add_text = True):
             ) 
             for k in qa['answers']
         ]
-        all_spans[str(i)] = spans
+        all_spans[f'gold_{i}'] = spans
+    all_spans.update(pred_spans)
     return get_atom_span(doc, all_spans, add_text= add_text)
 
 class CUAD_Data:
@@ -34,13 +37,19 @@ class CUAD_Data:
         Contract search by fuzzy matching of title
         return different spans given a contract and title
     """
-    def __init__(self, path = None):
+    def __init__(self, path = None, pred_path = None):
         if path is  None:
             ENVS = dotenv_values('../../.env')
             path = Path(ENVS['CUAD_PATH']) / 'CUAD_v1.json'
         
         self.data = json.load(open(path))['data']
+        if pred_path is not None:
+            self.pred_spans:List[Dict[str, List[Tuple[int, int]]]] = pickle.load(open(pred_path, 'rb'))
+            
+        else:
+            self.pred_spans = [{} for _ in self.data]
         self.atom_span_cache = [None for _ in self.data]
+
         """
         title: contract id
         paragraphs: a list of length 0
@@ -68,7 +77,7 @@ class CUAD_Data:
         self.update_history(idx)
         atom_spans = self.atom_span_cache[idx]
         if atom_spans is None:
-            atom_spans = get_cuad_atom_span(cont_data, add_text = False)
+            atom_spans = get_cuad_atom_span(cont_data, self.pred_spans[idx], add_text = False)
             self.atom_span_cache[idx] = atom_spans
         return {
             'idx': idx,
@@ -88,6 +97,7 @@ class CUAD_Data:
     def get_history(self):
         """Return history index and title"""
         return [{'index': k,'title': self.data[k]['title']} for k in self.history[::-1]]
+
 
 def get_data_app(handler: CUAD_Data, app = None):
     if app is None:

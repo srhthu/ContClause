@@ -71,15 +71,15 @@ label {
 }
 
 .span-hl-1{
-    border: 2px solid orange;
+    border: 2px solid #F1C40F;
 }
 
 .span-hl-2{
-    border: 2px solid deeppink;
+    border: 2px solid #F1C40F;
 }
 
 .span-hl-1:hover {
-    border: 2px solid gold;
+    border: 2px solid hotpink;
     cursor: pointer;
     background-color: beige  ;
 }
@@ -90,6 +90,20 @@ label {
     background-color: beige  ;
 }
 
+.pred-correct {
+    background-color: #ABEBC6;
+}
+
+.pred-wrong {
+    background-color: #F1948A;
+}
+
+.pred-correct,.pred-wrong:hover{
+    cursor: pointer;
+}
+
+/* span pop window */
+
 #span-info.disabled {
     display: none;
 }
@@ -98,9 +112,18 @@ label {
     position: fixed;
     border: 2px solid grey;
     opacity: 0.9;
-    background-color: aquamarine;
+    background-color: #FCF3CF;
     padding: 5px;
     font-size: large;
+}
+
+#span-info>div>div:nth-child(1) {
+    font-weight: 700;
+    border-bottom: 1px solid black;
+}
+
+#span-info>div>div:nth-child(2) {
+    padding-left: 1rem;
 }
 
 #left-panel{
@@ -123,3 +146,14 @@ label {
     margin-left: 3px;
 }
 
+
+
+#contract span{
+    margin-left: 2px;
+    margin-right: 2px
+}
+
+.legend-box {
+    width: 2rem;
+    height: 1rem;
+}

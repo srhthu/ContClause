@@ -34,13 +34,29 @@ def get_web_basic_app(app = None):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test', action = 'store_true')
+    parser.add_argument('--port', type = int, default = 3000)
+    args = parser.parse_args()
+
+    ENVS = dotenv_values('../../.env')
+    
+
     app = get_web_basic_app()
 
-    handler = CUAD_Data()
+    if args.test:
+        path = Path(ENVS['CUAD_TEST'])
+        pred_path = '../../data/test_pred_spans.pkl'
+    else:
+        path = Path(ENVS['CUAD_PATH']) / 'CUAD_v1.json'
+        pred_path = None
+    
+    handler = CUAD_Data(path, pred_path)
 
     app = get_data_app(handler, app)
 
-    app.run(host = '0.0.0.0', port = 3000, threaded = True)
+    app.run(host = '0.0.0.0', port = args.port, threaded = True)
 
 if __name__ == '__main__':
     main()

@@ -152,11 +152,16 @@ function create_contract(){
         span_text=data.contract_text.slice(span_info.start, span_info.end);
         span=$("<span></span>").text(process_text(span_text))
             .attr('data-clauses', span_info.types)
-            .addClass('plain-text')
+            .addClass('plain-text');
         
-        n_tp = span_info.types.length;
-
-        if (n_tp==0){
+        two_types  = parse_clauses(span_info.types);
+        // console.log(rtn)
+        gold_types = two_types[0];
+        pred_types = two_types[1];
+        
+        // Highlight gold clauses
+        n_tp = gold_types.length;
+        if (gold_types.length + pred_types.length == 0){
             span.addClass("span-hl-0");
         }
         else {
@@ -169,9 +174,21 @@ function create_contract(){
                     
                 }
             );
-
             if (n_tp==1) {span.addClass("span-hl-1");} 
-            else {span.addClass("span-hl-2");}
+            else if (n_tp > 1) {span.addClass("span-hl-2");}
+        }
+        
+        // Highlight prediction
+        if (pred_types.length > 0) {
+            is_good = false;
+            for (var pti =0; pti < pred_types.length; pti++){
+                r = gold_types.some(function (e){return e == pred_types[pti]});
+                if (r){
+                    is_good = true;
+                }
+            }
+            if (is_good) {span.addClass("pred-correct");console.log('Good pred')}
+            else {span.addClass("pred-wrong")}
         }
 
         cont_dom.append(span)
@@ -231,7 +248,8 @@ function on_change_font_size(){
 
 function determin_highlight(span_obj, clause_id){
     // console.log(span_obj);
-    clause_types = span_obj.attr('data-clauses').split(',')
+    two_ids = parse_clauses(span_obj.attr('data-clauses').split(','));
+    clause_types = two_ids[0];
     if (clause_types.indexOf(clause_id) > -1){
         span_obj.addClass('highlight');
     }
@@ -275,13 +293,33 @@ function create_info_window(span_obj){
     pop_span_info.empty().removeClass('disabled');
     $("body").append(pop_span_info)
     
+    
     cla_ids = span_obj.attr('data-clauses').split(',');
-    // console.log(cla_ids);
-    cla_names = $.map(cla_ids, function(v){
+    two_ids = parse_clauses(cla_ids);
+    gold_ids = two_ids[0];
+    pred_ids = two_ids[1];
+    // console.log(gold_ids);
+    // console.log(pred_ids);
+
+    cla_names = $.map(gold_ids, function(v){
         r = parseInt(v) + 1;
         return $(`#clause_sel a:nth-child(${r}) span:nth-child(2)`).text()
     })
-    pop_span_info.append(cla_names.join('<br>'));
+    pred_names = $.map(pred_ids, function(v){
+        r = parseInt(v) + 1;
+        return $(`#clause_sel a:nth-child(${r}) span:nth-child(2)`).text()
+    })
+    if (cla_names.length > 0) {
+        pop_span_info.append(
+            sub_pop_window("Gold", cla_names, "sub-win-gold")
+        );
+    }
+    
+    if (pred_names.length > 0){
+        pop_span_info.append(
+            sub_pop_window("Pred", pred_names, "sub-win-pred")
+        );
+    }
 
     // console.log(pop_span_info.outerWidth());
 
@@ -290,4 +328,32 @@ function create_info_window(span_obj){
         'top': span_obj.offset().top - $(window).scrollTop() - pop_span_info.outerHeight(),
         'left': span_obj.offset().left - $(window).scrollLeft() + 0.5 * (span_obj.outerWidth() - pop_span_info.outerWidth()),
     })
+}
+
+function sub_pop_window(title, array, class_n){
+    sub_win = $("<div></div>").addClass(class_n);
+    sub_win.append(
+        $("<div></div>").append(title)
+    );
+    sub_win.append(
+        $("<div></div>").html(array.join('<br>'))
+    );
+    return sub_win
+}
+
+function parse_clauses(cla_ids){
+    gold_ids = [];
+    pred_ids = [];
+    for (var i=0; i<cla_ids.length; i++){
+        s = cla_ids[i];
+        
+        if (s.startsWith('gold_')){
+            gold_ids.push(s.slice(5, s.length))
+        }
+        else if (s.startsWith('pred_')){
+            pred_ids.push(s.slice(5, s.length))
+        }
+    }
+    
+    return [gold_ids, pred_ids]
 }
