@@ -4,3 +4,4 @@ wandb/
 outputs/
 data
 runs/
+log.txt
