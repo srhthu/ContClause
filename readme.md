@@ -136,3 +136,23 @@ Features:
         
         features: 156623
 ```
+
+## GenQA Pipeline
+### Build Features
+First, convert dataset into examples, each example is a paragraph of one contract, with available qas.
+```Bash
+source .env
+
+python -m cont_gen.data_process.build_genqa_feature get_examples \
+--data_path $CUAD_TRAIN \
+--save_path ./data/genqa/train_examples.pkl
+```
+
+Tokenize paragraphs
+```Bash
+python -m cont_gen.data_process.build_genqa_feature tokenize \
+--data_path ./data/genqa/train_examples.pkl \
+--save_path ./data/genqa/train_token_ids_llama2.pkl \
+--tokenizer $LLAMA2_7B \
+--n_cpu 10
+```

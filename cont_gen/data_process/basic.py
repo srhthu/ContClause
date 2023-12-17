@@ -1,6 +1,6 @@
 """Define objects"""
 from dataclasses import dataclass
-from typing import List, Tuple, NamedTuple, Optional
+from typing import List, Tuple, NamedTuple, Optional, Dict, Any
 
 from .utils import convert_token_char_map
 
@@ -78,3 +78,32 @@ class QA_Feature(DictLike):
     is_impossible: bool # whether the window has answer span
     qa_id: str # {title}_{clause} or {title}_{clause}_{answer_id}
     example_index: int
+
+# Objects for GenQA
+class ParaQA(DictLike):
+    clause_id: int
+    clause_name: str
+    reloc_spans: List[Tuple[int, int]] # answer span in paragraph ori_text
+    answer_spans: List[Tuple[int, int]] # answer span in paragraph clean_text
+
+class NaturalParagraph(DictLike):
+    """
+    Natural paragraphs split by linebreaks with answer spans.
+    """
+    contract_index: int
+    para_index: int
+    title: str
+    offset: int
+    length: int # length of original paragraph
+    clean_text: str # clean text after removing extra space
+    char_map: List[int] # mapping from clean_text to ori_text
+    qas: List[ParaQA]
+
+class ParaTokens(DictLike):
+    """
+    Paragraph tokenization results.
+    """
+    contract_index: int
+    para_index: int
+    token_ids: List[int]
+    token_to_char: List[Tuple[int, int]]
