@@ -50,11 +50,13 @@ class FileLoader(IterableDataset):
             enc_dict = dict(zip(enc.keys(), chunk))
             enc_dict = {k:v for k,v in enc_dict.items() if k not in ignore_keys}
 
-            enc_dict['length'] = sum(enc_dict['attention_mask'])
+            length = sum(enc_dict['attention_mask'])
 
-            if enc_dict['length'] < 2:
+            if length < 2:
                 continue
-
+            
+            # enc_dict['length'] = length
+            assert enc_dict is not None
             yield enc_dict
 
 
@@ -74,9 +76,23 @@ if __name__ == '__main__':
     dl = FileLoader(args.data_dir, tk, max_length = 128)
 
     count = 0
+    batch = []
     for enc_dict in dl:
         count += 1
         print(dl.status)
         print(enc_dict)
+        batch.append(enc_dict)
         if count > 10:
             break
+    
+    def collate_fn(samples):
+        # For each key, gather the values of samples
+        batched = dict(zip(samples[0].keys(),
+                            zip(*[[sample[k] for k in sample] for sample in samples])))
+        # batched = {k:torch.stack([torch.tensor(e) for e in v], dim = 0) for k,v in batched.items()}
+        batched = {k: torch.tensor(v) for k,v in batched.items()}
+        return batched
+    
+    batch = collate_fn(batch)
+    for k,v in batch.items():
+        print(f'{k}: {v.shape} {v.dtype}')

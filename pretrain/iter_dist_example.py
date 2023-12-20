@@ -2,12 +2,15 @@
 Explore iterable dataset in distributed training.
 """
 import time
+import logging
 from torch.utils.data import IterableDataset, DataLoader
 import accelerate
+from transformers import AutoTokenizer
+import numpy as np
 
-import logging
+from pretrain.data_loader import FileLoader
 
-logging.basicConfig(filename = './log.txt', level = 10)
+logging.basicConfig(level = 20)
 
 class MyIterDataset(IterableDataset):
     def __init__(self, n):
@@ -22,15 +25,48 @@ class MyIterDataset(IterableDataset):
             logging.info(f'Handle data {i} by Process {self.local_rank}')
             yield i
 
-def main():
-    accelerator = accelerate.Accelerator()
+class ListIterDataset(IterableDataset):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
     
-    ds = MyIterDataset(20)
+    def __iter__(self):
+        for i in range(self.n):
+            yield (i*100+1, i*100+2, i*100 + 3)
+
+class DictIterDataset(IterableDataset):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+    
+    def __iter__(self):
+        for i in range(self.n):
+            yield {'x': np.array([i, -i]), 'y': i*100}
+
+def main():
+
+    accelerator = accelerate.Accelerator()
+    local_rank = accelerator.process_index
+    
+    # ds = MyIterDataset(20)
+
+    # tk = AutoTokenizer.from_pretrained('google/flan-t5-large')
+    # tk.add_special_tokens({'pad_token': '[PAD]'})
+    # ds = FileLoader(
+    #     '/storage_fast/rhshui/workspace/datasets/legal/cuad_contracts', 
+    #     tokenizer = tk, max_length = 52
+    # )
+
+    # ds = ListIterDataset(9)
+
+    ds = DictIterDataset(9)
+
     dl = DataLoader(ds, batch_size = 2)
+    print(type(dl))
+    # exit()
+
 
     dl = accelerator.prepare(dl)
-
-    local_rank = accelerator.process_index
 
     for batch in dl:
         logging.info(f'Process {local_rank} : {batch}')
