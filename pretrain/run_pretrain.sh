@@ -6,4 +6,4 @@ model_path=gpt2
 # --model_path $model_path --dtype bf16 \
 # --ds_config pretrain/ds_config/ds_stage2.json 
 
-CUDA_VISIBLE_DEVICES=3 python -m pretrain.demo_train_ds --model_path $model_path 
+CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=0 python -m pretrain.demo_train_ds --model_path $model_path --dtype bf16

@@ -138,11 +138,19 @@ def train_ddp_accelerate(args, accelerator: Accelerator, model, dataloader, igno
     """
     data_iter = iter(dataloader)
     loss_host = 0.0
-    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3)
     
     model, optimizer = accelerator.prepare(model, optimizer)
     
     model.train()
+    
+    # debug to check gradient accumulation
+    params = [(k,v) for k,v in model.named_parameters() if v.data.dim() > 1]
+    params = [(k,v) for k,v in model.named_parameters()]
+    p_name, para = params[int(len(params)* 0.5)]
+    # p_name, para = params[-1]
+    print(f'Check {p_name}')
+
     for step in range(args.max_steps):
         batch = next(data_iter)
         # print(f'input shape: {batch["input_ids"].shape}', flush = True)
@@ -152,7 +160,14 @@ def train_ddp_accelerate(args, accelerator: Accelerator, model, dataloader, igno
         loss_host += loss.detach().cpu().item()
         
         accelerator.backward(loss)
+        prev_p = para.clone().detach()
         optimizer.step()
+        # print(f'Step {step} After{para.data[50,:5]}')
+        diff = (para.data - prev_p).abs().sum().item()
+        if  diff < 1e-16:
+            print(f'No update {step +1} diff={diff}')
+        else:
+            print(f'Update {step +1} diff={diff}')
         optimizer.zero_grad()
         if (step+1) % (args.grad_acc_steps * args.log_steps) == 0:
             loss_host /= (args.log_steps * args.grad_acc_steps)
@@ -173,7 +188,7 @@ def smart_resize_embeddings(tokenizer, model: PreTrainedModel):
         return
     num_new_tokens = len(tokenizer) - old_vocab_size
     main_log(f"Resize to add {num_new_tokens} new tokens")
-    model.resize_token_embeddings(num_new_tokens)
+    model.resize_token_embeddings(len(tokenizer))
     token_emb = model.get_input_embeddings()
 
     new_embs_data = token_emb.weight.data[-num_new_tokens:]
@@ -186,7 +201,7 @@ def main():
     parser.add_argument('--dtype', choices = ['fp16', 'bf16'], default = 'fp16')
     parser.add_argument('--ds_config')
     parser.add_argument('--lora', action = 'store_true')
-    parser.add_argument('--max_steps', type = int, default = 200)
+    parser.add_argument('--max_steps', type = int, default = 30)
     parser.add_argument('--log_steps', type = int, default = 5)
     parser.add_argument('--device_bs', type = int, default = 2)
     parser.add_argument('--grad_acc_steps', type = int, default = 2)
@@ -203,7 +218,7 @@ def main():
 
     # Load dataset
     dataset = FileLoader(
-        '/storage_fast/rhshui/workspace/datasets/legal/cuad_contracts', 
+        './data/cuad_contracts', 
         tokenizer = tokenizer, max_length = 52
     )
     def collate_fn(samples):
@@ -217,6 +232,7 @@ def main():
 
     # Build model
     model = build_model(args.model_path, torch_dtype_map[args.dtype], state.local_process_index)
+    # model = build_model(args.model_path, torch.float32, state.local_process_index)
 
     smart_resize_embeddings(tokenizer, model)
 
