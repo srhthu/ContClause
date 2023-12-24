@@ -12,12 +12,23 @@
     },
     "gradient_clipping": 3.0,
   
-    "fp16": {
+    "bf16": {
       "enabled": true,
       "loss_scale": 0
     },
 
     "zero_optimization": {
-        "stage": 2
+        "stage": 1,
+        "allgather_partitions": true,
+        "allgather_bucket_size": 5e8,
+        "overlap_comm": true,
+        "reduce_scatter": true,
+        "reduce_bucket_size": "auto",
+        "contiguous_gradients": true,
+        "offload_optimizer": {
+          "device": "cpu",
+          "pin_memory": true,
+          "ratio": 1
+      }
     }
 }

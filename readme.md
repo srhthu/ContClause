@@ -16,6 +16,19 @@ Data Format of the `CUAD_v1.json`:
             is_impossible: True if there is no answer
 ```
 
+### Download extra contract data
+```Bash
+pip install gdown
+
+gdown 1of37X0hAhECQ3BN_004D8gm6V88tgZaB -O contracts.tar.gz
+
+if [ ! -d cuad_contracts ]; then
+mkdir cuad_contracts
+fi
+
+tar -xzf contracts.tar.gz -C cuad_contracts
+```
+
 ## Data Process Pipeline
 ### Document Tokenization
 Run `cont_gen/data_process/cut_doc.py` with argumetns:

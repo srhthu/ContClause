@@ -7,8 +7,10 @@ Aim:
 """
 import argparse
 import sys
+from pathlib import Path
 import json
 import torch
+import numpy as np
 import time
 from transformers import (
     AutoTokenizer, AutoConfig, PreTrainedModel,
@@ -25,44 +27,23 @@ from peft import (
 )
 from peft.utils import TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING
 import deepspeed
+from deepspeed.utils import safe_get_full_fp32_param
 import accelerate
 from accelerate import PartialState, Accelerator
+from accelerate.utils import DummyOptim
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from pynvml import *
 
-from pretrain.data_loader import FileLoader
-
-def print_gpu_utilization():
-    nvmlInit()
-    handle = nvmlDeviceGetHandleByIndex(0)
-    info = nvmlDeviceGetMemoryInfo(handle)
-    print(f"GPU memory occupied: {info.used//1024**2} MB.")
-
-def build_model(name_or_path, torch_dtype, local_rank):
-    config = AutoConfig.from_pretrained(name_or_path)
-    kws = dict(
-        torch_dtype = torch_dtype,
-        # device_map = 'auto'
-        device_map = local_rank
-    )
-    if config.is_encoder_decoder:
-        model = AutoModelForSeq2SeqLM.from_pretrained(name_or_path, **kws)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(name_or_path, **kws)
-    return model
-
-def build_lora_model(model):
-    task_type = "SEQ_2_SEQ_LM" if model.config.is_encoder_decoder else "CAUSAL_LM"
-    config = LoraConfig(
-        r=8,
-        lora_alpha= 16 ,
-        target_modules=TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING[model.config.model_type],
-        lora_dropout=0.05,
-        bias="none",
-        task_type=task_type,
-    )
-    model = get_peft_model(model, config)
+from clm.data_loader import FileLoader, FileLoader_Clean
+from clm.utils import (
+    get_gpu_utilization, print_gpu_utilization, logger,
+    DistLogger, smart_resize_embeddings, ParamChangeChecker
+)
+from clm.prepare import (
+    load_and_update_ds_config, get_hf_ds_plugin,
+    build_model, build_lora_model_demo, initialize_accelerator
+)
 
 def compute_loss(model, batch, ignore_index):
     # out = model(**batch)
@@ -84,25 +65,9 @@ def compute_loss(model, batch, ignore_index):
 
     return loss
 
-def main_log(msg):
-    state = PartialState()
-    if state.local_process_index == 0:
-        print(msg)
 
-def process_log(msg):
-    """
-    Prepend with each process's index
-    """
-    state = PartialState()
-    print(f'[Process {state.local_process_index}] {msg}')
-
-def train_with_deepspeed(args, model, dataloader, ignore_index):
-    ds_config = json.load(open(args.ds_config))
-    ds_config['train_micro_batch_size_per_gpu'] = args.device_bs
-    ds_config['gradient_accumulation_steps'] = args.grad_acc_steps
-    if 'train_batch_size' in ds_config:
-        _ = ds_config.pop('train_batch_size')
-    
+def train_with_deepspeed(args, model, dataloader, ds_config, ignore_index):
+    logger.log_main('Build deepspeed engine')
     model_engine, optimizer, _, _ = deepspeed.initialize(
         model = model,
         model_parameters = model.parameters(),
@@ -117,20 +82,36 @@ def training_loop_deepspeed(args, model, dataloader, ignore_index):
     data_iter = iter(dataloader)
     loss_host = 0.0
     model.train()
+
+    checker = ParamChangeChecker(model, use_deepspeed=True)
+    checker.check()
+
+    logs = []
+    last_log_time = time.time()
+
     for step in range(args.max_steps):
         batch = next(data_iter)
         loss = compute_loss(model, batch, ignore_index = ignore_index)
         loss_host += loss.detach().cpu().item()
         # Modified. Replace loss.backward()
         model.backward(loss)
-        if (step+1) % args.grad_acc_steps == 0:
-            # Modified. Replace optimizer.step()
-            model.step()
+        model.step()
 
-            if (step + 1) % args.log_steps == 0:
-                loss_host /= (args.log_steps * args.grad_acc_steps)
-                main_log(f'Step {step+1} loss: {loss_host:.4f}')
-                loss_host = 0.0
+        # main_log((
+        #     ("Update" if checker.check() else "No update")
+        #     + f' at step {step}'
+        #     + f' is acc boundary: {model.is_gradient_accumulation_boundary()}'
+        # ))
+
+        if (step+1) % (args.grad_acc_steps * args.log_steps) == 0:
+            # handle logging
+            dur = time.time() - last_log_time
+            last_log_time = time.time()
+
+            logger.log_main(f'Step {step+1} loss: {loss_host:.4f} time: {dur:.2f}')
+            logs.append({'step': step, 'loss': loss_host, 'time': dur})
+            loss_host = 0.0
+    return logs
 
 def train_ddp_accelerate(args, accelerator: Accelerator, model, dataloader, ignore_index):
     """
@@ -138,18 +119,37 @@ def train_ddp_accelerate(args, accelerator: Accelerator, model, dataloader, igno
     """
     data_iter = iter(dataloader)
     loss_host = 0.0
-    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3)
+
+    # Build optimizer
+    optimizer_cls = (
+        torch.optim.AdamW
+        if accelerator.state.deepspeed_plugin is None
+        or "optimizer" not in accelerator.state.deepspeed_plugin.deepspeed_config
+        else DummyOptim
+    )
+    optimizer = optimizer_cls(model.parameters(), lr=args.lr)
     
+    # prepare model and optimizer
+    # enable checkpointing
+    # model.gradient_checkpointing_enable()
+
     model, optimizer = accelerator.prepare(model, optimizer)
+    logger.log_main('Finish prepare')
+    print_gpu_utilization()
     
+    logger.log_main(f'{type(model)}')
+
     model.train()
-    
-    # debug to check gradient accumulation
-    params = [(k,v) for k,v in model.named_parameters() if v.data.dim() > 1]
-    params = [(k,v) for k,v in model.named_parameters()]
-    p_name, para = params[int(len(params)* 0.5)]
-    # p_name, para = params[-1]
-    print(f'Check {p_name}')
+
+    logs = []
+    last_log_time = time.time()
+
+    checker = ParamChangeChecker(
+        model, 
+        use_deepspeed=accelerator.state.deepspeed_plugin is not None
+    )
+    # checker.check()
+    # exit()
 
     for step in range(args.max_steps):
         batch = next(data_iter)
@@ -159,56 +159,58 @@ def train_ddp_accelerate(args, accelerator: Accelerator, model, dataloader, igno
             loss = compute_loss(model, batch, ignore_index = ignore_index)
         loss_host += loss.detach().cpu().item()
         
+        # backward
         accelerator.backward(loss)
-        prev_p = para.clone().detach()
         optimizer.step()
-        # print(f'Step {step} After{para.data[50,:5]}')
-        diff = (para.data - prev_p).abs().sum().item()
-        if  diff < 1e-16:
-            print(f'No update {step +1} diff={diff}')
-        else:
-            print(f'Update {step +1} diff={diff}')
         optimizer.zero_grad()
+
+        # main_log((
+        #     ("Update" if checker.check() else "No update")
+        #     + f' at step {step}'
+        # ))
+
         if (step+1) % (args.grad_acc_steps * args.log_steps) == 0:
             loss_host /= (args.log_steps * args.grad_acc_steps)
-            main_log(f'Step {step+1} loss: {loss_host:.4f}')
+            dur = time.time() - last_log_time
+            last_log_time = time.time()
+
+            logger.log_main(f'Step {step+1} loss: {loss_host:.4f} time: {dur:.2f}')
+            logs.append({'step': step, 'loss': loss_host, 'time': dur})
             loss_host = 0.0
+    
+    return logs, model
 
-def print_device(named_parameters):
-    for name, para in named_parameters:
-        print(f'{name}: {para.device}')
-
-def smart_resize_embeddings(tokenizer, model: PreTrainedModel):
-    """
-    Resize the model input embeddings and synchronous the new token embeddings across devices
-    """
-    old_vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) == old_vocab_size:
-        # do not need resize embedding
-        return
-    num_new_tokens = len(tokenizer) - old_vocab_size
-    main_log(f"Resize to add {num_new_tokens} new tokens")
-    model.resize_token_embeddings(len(tokenizer))
-    token_emb = model.get_input_embeddings()
-
-    new_embs_data = token_emb.weight.data[-num_new_tokens:]
-    accelerate.utils.broadcast(new_embs_data, from_process = 0)
-    process_log(f'{token_emb.weight.data[-1,:10]}')
+def collate_fn(samples):
+    # For each key, gather the values of samples
+    batched = dict(zip(samples[0].keys(),
+                        zip(*[[sample[k] for k in sample] for sample in samples])))
+    batched = {k: torch.tensor(v) for k,v in batched.items()}
+    return batched
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path')
-    parser.add_argument('--dtype', choices = ['fp16', 'bf16'], default = 'fp16')
+    parser.add_argument('--dtype', choices = ['fp16', 'bf16', 'fp32'], default = 'fp16')
     parser.add_argument('--ds_config')
     parser.add_argument('--lora', action = 'store_true')
+    parser.add_argument('--lr', type = float, default = 1e-4)
     parser.add_argument('--max_steps', type = int, default = 30)
     parser.add_argument('--log_steps', type = int, default = 5)
     parser.add_argument('--device_bs', type = int, default = 2)
     parser.add_argument('--grad_acc_steps', type = int, default = 2)
+    parser.add_argument('--max_length', type = int, default = 512)
+
+    parser.add_argument('--lib', choices = ['deepspeed', 'accelerate'], help = 'training framework to use')
+    # to be compatible with deepspeed launch
+    parser.add_argument('--local_rank')
     args = parser.parse_args()
 
-    torch_dtype_map = {'fp16': torch.float16, 'bf16': torch.bfloat16}
-    accelerator = Accelerator(gradient_accumulation_steps=args.grad_acc_steps)
+    torch_dtype_map = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': torch.float32}
+
+    accelerator, ds_config = initialize_accelerator(
+        args.ds_config, args.device_bs, args.grad_acc_steps
+    )
+
     state = PartialState()
 
     # Build tokenizer
@@ -217,38 +219,50 @@ def main():
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
     # Load dataset
-    dataset = FileLoader(
+    ds_cls = FileLoader_Clean
+    dataset = ds_cls(
         './data/cuad_contracts', 
-        tokenizer = tokenizer, max_length = 52
+        tokenizer = tokenizer, max_length = args.max_length
     )
-    def collate_fn(samples):
-        # For each key, gather the values of samples
-        batched = dict(zip(samples[0].keys(),
-                           zip(*[[sample[k] for k in sample] for sample in samples])))
-        batched = {k: torch.tensor(v) for k,v in batched.items()}
-        return batched
+    
     dataloader = DataLoader(dataset, batch_size = args.device_bs, collate_fn = collate_fn)
     dataloader = accelerator.prepare(dataloader)
 
     # Build model
-    model = build_model(args.model_path, torch_dtype_map[args.dtype], state.local_process_index)
+    is_zero3 = False if accelerator.state.deepspeed_plugin is None else \
+            accelerator.state.deepspeed_plugin.zero3_init_flag
+    model = build_model(args.model_path, torch_dtype_map[args.dtype], 
+                        state.local_process_index, 
+                        is_zero3 = is_zero3)
     # model = build_model(args.model_path, torch.float32, state.local_process_index)
 
-    smart_resize_embeddings(tokenizer, model)
+    # smart_resize_embeddings(tokenizer, model)
 
     # Lora
     if args.lora:
-        model = build_lora_model(model)
+        model = build_lora_model_demo(model)
 
     print_gpu_utilization()
-    time.sleep(4)
-    train_ddp_accelerate(args, accelerator, model, dataloader, ignore_index = tokenizer.pad_token_id)
-    
-    # train_with_deepspeed(args, model, dataloader, ignore_index=tokenizer.pad_token_id)
+    time.sleep(3)
 
-    
+    if args.lib == 'deepspeed':
+        train_with_deepspeed(args, model, dataloader, ds_config, ignore_index=tokenizer.pad_token_id)
+    elif args.lib == 'accelerate':
+        logs, engine = train_ddp_accelerate(args, accelerator, model, dataloader, ignore_index = tokenizer.pad_token_id)
 
-    # Start training
+        all_time = [k['time'] for k in logs[1:]]
+        logger.log_main(f'Average log duration: {np.mean(all_time)}')
+
+        # out_dir = 'runs/pretrain_debug'
+        # if accelerator.is_local_main_process:
+        #     Path(out_dir).mkdir(parents = True, exist_ok = True)
+        #     # log_file = f'device{accelerator.num_processes}_devbs{args.device_bs}_gaccstep{args.grad_acc_steps}.log'
+        #     log_file = 'clean_phi-1_5_len1024_lr1e-5_gpu4_devbs1_gaccstep_4.log'
+        #     with open(Path(out_dir) / log_file, 'a') as f:
+        #         f.write(json.dumps(logs) + '\n')
+            
+        
+        # engine.save_checkpoint('runs/pretrain_debug/clean_phi-1_5_lr1e-5_len1024_4_1_4', tag = 40000)
     
             
     print_gpu_utilization()

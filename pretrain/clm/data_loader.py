@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import torch
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
@@ -22,6 +23,8 @@ class FileLoader(IterableDataset):
     
     def __iter__(self):
         count = 0
+        if not Path(self.data_dir).exists():
+            raise ValueError(f'Data folder does not exist. {self.data_dir}')
         for sub_dir in Path(self.data_dir).glob("*"):
             self.status['sub_dir'] = str(sub_dir)
             for file in sub_dir.glob("*"):
@@ -38,6 +41,7 @@ class FileLoader(IterableDataset):
         """
         Return the tokenization result of chunks of one document.
         """
+        doc = self.clean_text(doc)
         enc = self.tokenizer(
             doc, max_length = self.max_length, 
             truncation = True, padding = 'max_length',
@@ -58,6 +62,17 @@ class FileLoader(IterableDataset):
             # enc_dict['length'] = length
             assert enc_dict is not None
             yield enc_dict
+
+    def clean_text(self, doc):
+        return doc
+
+class FileLoader_Clean(FileLoader):
+    """Remove extra space and line break"""
+    def clean_text(self, doc):
+        lines = doc.split('\n')
+        pat = r'[ ]{2,}'
+        lines = [re.sub(pat, ' ', k) for k in lines]
+        return '\n'.join(lines)
 
 
 if __name__ == '__main__':
