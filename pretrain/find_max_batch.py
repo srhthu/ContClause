@@ -197,7 +197,7 @@ def main():
         try:
             logs = train_loop(model, accelerator, dataloader)
         except Exception as e:
-            logger.log_main(traceback.format_exc())
+            # logger.log_main(traceback.format_exc())
             logger.log_main(str(e))
             result = {'device_batch_size': device_bs, 'success': False}
         else:
