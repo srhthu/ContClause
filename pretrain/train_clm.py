@@ -1,4 +1,7 @@
 """
+Training code for causal language modeling
+"""
+"""
 A demo of pretraining using deepspeed.
 
 Aim:
@@ -37,7 +40,7 @@ from pynvml import *
 
 from clm.data_loader import FileLoader, FileLoader_Clean
 from clm.utils import (
-    get_gpu_utilization, print_gpu_utilization,
+    get_gpu_utilization, print_gpu_utilization, logger,
     DistLogger, smart_resize_embeddings, ParamChangeChecker
 )
 from clm.prepare import (
@@ -65,61 +68,19 @@ def compute_loss(model, batch, ignore_index):
 
     return loss
 
-
-def train_with_deepspeed(args, model, dataloader, ds_config, ignore_index):
-    logger.log_main('Build deepspeed engine')
-    model_engine, optimizer, _, _ = deepspeed.initialize(
-        model = model,
-        model_parameters = model.parameters(),
-        config = ds_config
-    )
-    training_loop_deepspeed(args, model_engine, dataloader, ignore_index)
-
-def training_loop_deepspeed(args, model, dataloader, ignore_index):
-    """
-    Model is a deepspeed engine.
-    """
-    data_iter = iter(dataloader)
-    loss_host = 0.0
-    model.train()
-
-    checker = ParamChangeChecker(model, use_deepspeed=True)
-    checker.check()
-
-    logs = []
-    last_log_time = time.time()
-
-    for step in range(args.max_steps):
-        batch = next(data_iter)
-        loss = compute_loss(model, batch, ignore_index = ignore_index)
-        loss_host += loss.detach().cpu().item()
-        # Modified. Replace loss.backward()
-        model.backward(loss)
-        model.step()
-
-        # main_log((
-        #     ("Update" if checker.check() else "No update")
-        #     + f' at step {step}'
-        #     + f' is acc boundary: {model.is_gradient_accumulation_boundary()}'
-        # ))
-
-        if (step+1) % (args.grad_acc_steps * args.log_steps) == 0:
-            # handle logging
-            dur = time.time() - last_log_time
-            last_log_time = time.time()
-
-            logger.log_main(f'Step {step+1} loss: {loss_host:.4f} time: {dur:.2f}')
-            logs.append({'step': step, 'loss': loss_host, 'time': dur})
-            loss_host = 0.0
-    return logs
+def collate_fn(samples):
+    # For each key, gather the values of samples
+    batched = dict(zip(samples[0].keys(),
+                        zip(*[[sample[k] for k in sample] for sample in samples])))
+    batched = {k: torch.tensor(v) for k,v in batched.items()}
+    return batched
 
 def train_ddp_accelerate(
     args, 
     accelerator: Accelerator, 
     model, 
     dataloader, 
-    ignore_index,
-    logger: DistLogger
+    ignore_index
 ):
     """
     Train with DDP.
@@ -136,13 +97,9 @@ def train_ddp_accelerate(
     )
     optimizer = optimizer_cls(model.parameters(), lr=args.lr)
     
-    # prepare model and optimizer
-    # enable checkpointing
-    # model.gradient_checkpointing_enable()
-
+    # prepare model and optimize
     model, optimizer = accelerator.prepare(model, optimizer)
     logger.log_main('Finish prepare')
-    print_gpu_utilization(logger)
     
     logger.log_main(f'{type(model)}')
 
@@ -150,18 +107,18 @@ def train_ddp_accelerate(
 
     logs = []
     last_log_time = time.time()
+    total_step = 0
+    while True:
+        try:
+            batch = next(data_iter)
+        except StopIteration:
+            # when finish a epoch, determin continue or stop
+            if args.max_steps is None:
+                break
+            else:
+                data_iter = iter(dataloader)
+                batch = next(data_iter)
 
-    checker = ParamChangeChecker(
-        model, 
-        use_deepspeed=accelerator.state.deepspeed_plugin is not None
-    )
-    # checker.check()
-    # exit()
-
-    for step in range(args.max_steps):
-        batch = next(data_iter)
-        # print(f'input shape: {batch["input_ids"].shape}', flush = True)
-        # exit()
         with accelerator.accumulate(model):
             loss = compute_loss(model, batch, ignore_index = ignore_index)
         loss_host += loss.detach().cpu().item()
@@ -171,55 +128,65 @@ def train_ddp_accelerate(
         optimizer.step()
         optimizer.zero_grad()
 
-        # main_log((
-        #     ("Update" if checker.check() else "No update")
-        #     + f' at step {step}'
-        # ))
-
-        if (step+1) % (args.grad_acc_steps * args.log_steps) == 0:
+        if (total_step+1) % (args.grad_acc_steps * args.log_steps) == 0:
             loss_host /= (args.log_steps * args.grad_acc_steps)
             dur = time.time() - last_log_time
             last_log_time = time.time()
 
-            logger.log_main(f'Step {step+1} loss: {loss_host:.4f} time: {dur:.2f}')
-            logs.append({'step': step, 'loss': loss_host, 'time': dur})
+            loss_log = {'step': total_step, 'loss': loss_host, 'time': dur}
+            logger.log_main(str(loss_log))
+            logs.append(loss_log)
+            write_loss_log(args.output_dir, loss_log)
+
             loss_host = 0.0
+        
+        if (total_step + 1) % (args.save_steps) == 0:
+            save_checkpoint(total_step+1, model, optimizer, dataloader)
+        
+        total_step += 1
     
     return logs, model
 
-def collate_fn(samples):
-    # For each key, gather the values of samples
-    batched = dict(zip(samples[0].keys(),
-                        zip(*[[sample[k] for k in sample] for sample in samples])))
-    batched = {k: torch.tensor(v) for k,v in batched.items()}
-    return batched
+def write_loss_log(run_dir, loss_log: dict):
+    if run_dir is None:
+        return
+    with open(Path(run_dir) / 'loss_log.jsonl', 'a') as f:
+        f.write(json.dumps(loss_log, ensure_ascii=False) + '\n')
+
+def save_checkpoint(total_step, model, optimizer, dataloader):
+    ...
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_path')
-    parser.add_argument('--dtype', choices = ['fp16', 'bf16', 'fp32'], default = 'fp16')
+    parser.add_argument('--output_dir')
+    parser.add_argument('--data_dir')
+    parser.add_argument('--model_path', default = 'microsoft/phi-1_5')
+    parser.add_argument('--dtype', choices = ['fp16', 'bf16', 'fp32'], default = 'bf16')
     parser.add_argument('--ds_config')
-    parser.add_argument('--lora', action = 'store_true')
     parser.add_argument('--lr', type = float, default = 1e-4)
     parser.add_argument('--max_steps', type = int, default = 30)
     parser.add_argument('--log_steps', type = int, default = 5)
+    parser.add_argument('--save_steps', type = int)
     parser.add_argument('--device_bs', type = int, default = 2)
-    parser.add_argument('--grad_acc_steps', type = int, default = 2)
-    parser.add_argument('--max_length', type = int, default = 512)
+    parser.add_argument('--total_bs', type = int, default = 128)
+    
+    parser.add_argument('--max_length', type = int, default = 1024)
 
-    parser.add_argument('--lib', choices = ['deepspeed', 'accelerate'], help = 'training framework to use')
     # to be compatible with deepspeed launch
     parser.add_argument('--local_rank')
     args = parser.parse_args()
 
     torch_dtype_map = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': torch.float32}
 
+    state = PartialState()
+
+    grad_acc_steps, left = divmod(args.total_bs, args.device_bs * state.num_processes)
+    assert left == 0
+    args.grad_acc_steps = grad_acc_steps
+
     accelerator, ds_config = initialize_accelerator(
         args.ds_config, args.device_bs, args.grad_acc_steps
     )
-    logger = DistLogger()
-
-    state = PartialState()
 
     # Build tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code = True)
@@ -229,7 +196,7 @@ def main():
     # Load dataset
     ds_cls = FileLoader_Clean
     dataset = ds_cls(
-        '../data/cuad_contracts', 
+        args.data_dir, 
         tokenizer = tokenizer, max_length = args.max_length
     )
     
@@ -242,42 +209,24 @@ def main():
     model = build_model(args.model_path, torch_dtype_map[args.dtype], 
                         state.local_process_index, 
                         is_zero3 = is_zero3)
-    # model = build_model(args.model_path, torch.float32, state.local_process_index)
 
-    smart_resize_embeddings(tokenizer, model, logger = logger)
+    smart_resize_embeddings(tokenizer, model)
 
-    # Lora
-    if args.lora:
-        model = build_lora_model_demo(model)
+    logs, engine = train_ddp_accelerate(args, accelerator, model, dataloader, ignore_index = tokenizer.pad_token_id)
 
-    print_gpu_utilization(logger)
-    time.sleep(3)
+    all_time = [k['time'] for k in logs[1:]]
+    logger.log_main(f'Average log duration: {np.mean(all_time)}')
 
-    if args.lib == 'deepspeed':
-        train_with_deepspeed(args, model, dataloader, ds_config, ignore_index=tokenizer.pad_token_id)
-    elif args.lib == 'accelerate':
-        logs, engine = train_ddp_accelerate(
-            args, accelerator, model, dataloader, 
-            ignore_index = tokenizer.pad_token_id,
-            logger = logger
-        )
-
-        all_time = [k['time'] for k in logs[1:]]
-        logger.log_main(f'Average log duration: {np.mean(all_time)}')
-
-        # out_dir = 'runs/pretrain_debug'
-        # if accelerator.is_local_main_process:
-        #     Path(out_dir).mkdir(parents = True, exist_ok = True)
-        #     # log_file = f'device{accelerator.num_processes}_devbs{args.device_bs}_gaccstep{args.grad_acc_steps}.log'
-        #     log_file = 'clean_phi-1_5_len1024_lr1e-5_gpu4_devbs1_gaccstep_4.log'
-        #     with open(Path(out_dir) / log_file, 'a') as f:
-        #         f.write(json.dumps(logs) + '\n')
-            
+    # out_dir = 'runs/pretrain_debug'
+    # if accelerator.is_local_main_process:
+    #     Path(out_dir).mkdir(parents = True, exist_ok = True)
+    #     # log_file = f'device{accelerator.num_processes}_devbs{args.device_bs}_gaccstep{args.grad_acc_steps}.log'
+    #     log_file = 'clean_phi-1_5_len1024_lr1e-5_gpu4_devbs1_gaccstep_4.log'
+    #     with open(Path(out_dir) / log_file, 'a') as f:
+    #         f.write(json.dumps(logs) + '\n')
         
-        # engine.save_checkpoint('runs/pretrain_debug/clean_phi-1_5_lr1e-5_len1024_4_1_4', tag = 40000)
     
-            
-    print_gpu_utilization(logger)
+    # engine.save_checkpoint('runs/pretrain_debug/clean_phi-1_5_lr1e-5_len1024_4_1_4', tag = 40000)
 
 
 if __name__ == '__main__':

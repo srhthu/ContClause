@@ -7,6 +7,8 @@ from pynvml import *
 class DistLogger:
     """Logger for distributed environment"""
     def __init__(self):
+        if PartialState._shared_state == {}:
+            raise RuntimeError('Should not initialize DistLogger before iniatializing PartialState')
         self.state = PartialState()
     
     def log_main(self, message):
@@ -16,8 +18,6 @@ class DistLogger:
     def log_process(self, message):
             print(f'[Process {self.state.local_process_index}] {message}')
 
-logger = DistLogger()
-
 def get_gpu_utilization():
     """Return GPU used RAM in MB"""
     nvmlInit()
@@ -26,7 +26,7 @@ def get_gpu_utilization():
         info = nvmlDeviceGetMemoryInfo(handle)
         yield i, info.used//1024**2
 
-def print_gpu_utilization(logger: DistLogger = logger):
+def print_gpu_utilization(logger):
     for i, mem in get_gpu_utilization():
         logger.log_main(f'GPU {i} used {mem}MB')
 
@@ -34,7 +34,7 @@ def get_gpu_memory():
     all_gpu_mem = [k[1] for k in list(get_gpu_utilization())]
     gpu_ids = os.environ['CUDA_VISIBLE_DEVICES']
     if gpu_ids is None:
-        state = accelerate.PartialState()
+        state = PartialState()
         gpu_ids = list(range(state.num_processes))
     else:
         gpu_ids = list(map(int, gpu_ids.split(',')))
@@ -76,7 +76,8 @@ class ParamChangeChecker:
         self.named_param = [(k,v) for k,v in model.named_parameters()][-1]
 
         self.last_observe = self.get_value()
-
+    
+    def print_info(self, logger: DistLogger):
         logger.log_main((
             f'check para: {self.named_param[0]},' 
             f'{self.last_observe.reshape(-1)[:3]}'

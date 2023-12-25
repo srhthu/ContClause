@@ -8,7 +8,7 @@ import accelerate
 from transformers import AutoTokenizer
 import numpy as np
 
-from pretrain.data_loader import FileLoader
+from clm.data_loader import FileLoader
 
 logging.basicConfig(level = 20)
 

@@ -6,7 +6,15 @@ from tqdm import tqdm
 from multiprocessing import Pool
 # %%
 data_dir = Path('../../data/cuad_contracts')
-
+# %%
+def estimate_training_cost(seq_len, micro_bs, step_time):
+    total_byte = 35 * 1024**3
+    total_token = total_byte / 10
+    total_micro_steps = total_token / seq_len / micro_bs
+    total_time = total_micro_steps * step_time / 3600
+    return total_micro_steps, total_time
+# %%
+estimate_training_cost(1024, 4 * 4, 1.247)
 # %%
 def get_file_size(name):
     return len(open(name).read())

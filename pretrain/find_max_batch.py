@@ -43,7 +43,7 @@ from clm.prepare import (
     build_model, build_lora_model_demo, initialize_accelerator
 )
 from clm.utils import (
-    get_gpu_utilization, print_gpu_utilization, logger, get_gpu_memory,
+    get_gpu_utilization, print_gpu_utilization, get_gpu_memory,
     DistLogger, smart_resize_embeddings, ParamChangeChecker
 )
 
@@ -73,51 +73,7 @@ def collate_fn(samples):
     batched = {k: torch.stack(v, dim = 0) for k,v in batched.items()}
     return batched
 
-def search_batch_size(model, accelerator, dataset, max_device_batch_size, max_length):
-    """
-    Search possible device batch_size and return training speed and memory usage.
-
-    Return:
-        results: a list of results:
-            device_batch_size
-            step_time: average time of processing one micro batch
-            samples_per_second: num of samples finished by each gpu per second
-            gpu_memory: map from gpu_id to gpu_used memory in MB, only inlude used gpus
-            success (bool): 
-    """
-    n_gpus = accelerator.num_processes
-    device_bs = 1
-    results = []
-    while device_bs <= max_device_batch_size:
-        logger.log_main(f'Try device_bs={device_bs}')
-        total_samples = n_gpus * device_bs * GRAD_ACC_STEPS * NUM_MACRO_STEPS
-        dataset = PseudoIterDataset(max_length, total_samples)
-        dataloader = DataLoader(dataset, batch_size = device_bs, collate_fn = collate_fn)
-
-        try:
-            logs = train_loop(model, accelerator, dataloader)
-        except:
-            result = {'device_batch_size': device_bs, 'success': False}
-        else:
-            # exclude the first step
-            ave_step_time = np.mean([k['time'] for k in logs[1:]])
-            samples_per_second = device_bs / ave_step_time
-            
-            result = {
-                'device_batch_size': device_bs,
-                'step_time': ave_step_time,
-                'samples_per_second': samples_per_second,
-                'gpu_memory': get_gpu_memory(),
-                'success': True,
-            }
-        results.append(result)
-        logger.log_main(str(result))
-        if not result['success']:
-            break
-        else:
-            device_bs *= 2
-
-def train_loop(model, accelerator: Accelerator, dataloader):
+def train_loop(model, accelerator: Accelerator, dataloader, logger):
     # Build optimizer
     optimizer_cls = (
         torch.optim.AdamW
@@ -172,30 +128,48 @@ def main():
         'bf16': torch.bfloat16, 
         'fp32': torch.float32
     }
-    state = PartialState()
-    # Build model
-    model = build_model(args.model_path, torch_dtype_map[args.dtype], 
-                        state.local_process_index, 
-                        is_zero3 = False)
-    print_gpu_utilization()
 
     # start search
-    n_gpus = state.num_processes
+    """
+    Search possible device batch_size and return training speed and memory usage.
+
+    Return:
+        results: a list of results:
+            device_batch_size
+            step_time: average time of processing one micro batch
+            samples_per_second: num of samples finished by each gpu per second
+            gpu_memory: map from gpu_id to gpu_used memory in MB, only inlude used gpus
+            success (bool): 
+    """
+    model = None
+    
     device_bs = 1
     results = []
     while device_bs <= args.max_device_batch_size:
         accelerator, ds_config = initialize_accelerator(
             args.ds_config, device_bs, GRAD_ACC_STEPS
         )
+        logger = DistLogger()
+        if device_bs == 1:
+            logger.log_main(str(accelerator.state))
+        state = PartialState()
+        n_gpus = state.num_processes
 
+        # Build model
+        if model is None:
+            model = build_model(args.model_path, torch_dtype_map[args.dtype], 
+                        state.local_process_index, 
+                        is_zero3 = False)
+            print_gpu_utilization(logger)
         
         logger.log_main(f'Try device_bs={device_bs}')
+        # Build data loader
         total_samples = n_gpus * device_bs * GRAD_ACC_STEPS * NUM_MACRO_STEPS
         dataset = PseudoIterDataset(args.max_length, total_samples)
         dataloader = DataLoader(dataset, batch_size = device_bs, collate_fn = collate_fn)
 
         try:
-            logs = train_loop(model, accelerator, dataloader)
+            logs = train_loop(model, accelerator, dataloader, logger)
         except Exception as e:
             # logger.log_main(traceback.format_exc())
             logger.log_main(str(e))
