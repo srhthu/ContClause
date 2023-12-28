@@ -187,11 +187,13 @@ def main():
                 'success': True,
             }
         results.append(result)
-        logger.log_main(str(result))
+        # logger.log_main(str(result))
         if not result['success']:
             break
         else:
             device_bs *= 2
+    for r in results:
+        logger.log_main(str(r))
 
 
 if __name__ == '__main__':

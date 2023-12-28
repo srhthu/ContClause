@@ -77,7 +77,7 @@ class SimpleIterDataset(torch.utils.data.IterableDataset):
     
     def __iter__(self):
         for i in range(self.n):
-            time.sleep(0.5)
+            time.sleep(0.1)
             yield i
 class SimpleDataset(torch.utils.data.Dataset):
     def __init__(self, n):
@@ -91,6 +91,9 @@ class SimpleDataset(torch.utils.data.Dataset):
 # %%
 ds = SimpleIterDataset(10)
 # ds = SimpleDataset(10)
+# %%
 for k in torch.utils.data.DataLoader(ds, num_workers = 2):
     print(k)
+# %%
+list(iter(torch.utils.data.DataLoader(ds, batch_size = 3)))
 # %%

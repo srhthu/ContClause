@@ -2,6 +2,7 @@ from transformers import PreTrainedModel
 import accelerate
 from accelerate import PartialState
 from pathlib import Path
+import time
 from deepspeed.utils import safe_get_full_fp32_param
 from pynvml import *
 
@@ -17,11 +18,15 @@ class DistLogger:
     
     def log_main(self, message):
         if self.state.local_process_index == 0:
-            self._log('[Main]' + message)
+            self._log(f'[Main]{self.get_timestamp()} {message}')
     
     def log_process(self, message):
-            self._log(f'[Process {self.state.local_process_index}] {message}')
+            self._log(f'[Process {self.state.local_process_index}]{self.get_timestamp()} {message}')
     
+    def get_timestamp(self):
+        time_s = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        return f'[{time_s}]'
+
     def _log(self, message):
         """Log message to multiple destinations"""
         print(message)

@@ -11,3 +11,9 @@ CUDA_VISIBLE_DEVICES=2,3 accelerate launch --num_processes 2 --main_process_port
 # Deepspeed Zero 1
 CUDA_VISIBLE_DEVICES=2,3 accelerate launch --num_processes 2 --main_process_port 5677 find_max_batch.py --model_path microsoft/phi-1_5 --dtype bf16 --max_length 1024 --max_device_batch_size 8 --ds_config ds_config/zero1_bf16.json
 ```
+
+## Run pretrain
+Pretrain on all CUAD data (35GB). Change the `device_bs` and `grad_acc_steps` to make `total_bs=128`.
+```
+./run_script/train_phi_zero1.sh
+```

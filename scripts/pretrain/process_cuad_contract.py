@@ -54,3 +54,6 @@ print(f'estimate training hour: {est_time}')
 3600 / 8 * 80
 # %%
 '80k -> 36 M / hour -> 100 hour'
+'total 35G, token 3.5G, 1 sample 1k token, total 3.5M sample.'
+'4 gpu, 1M sample per gpu'
+'2 sample/s, 1 hour 2*3.6k, total hour = 1k / 2 / 3.6 = 120'

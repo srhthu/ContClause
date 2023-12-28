@@ -35,7 +35,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from pynvml import *
 
-from clm.data_loader import FileLoader, FileLoader_Clean
+from clm.data_loader import CUAD_FileLoader, CUAD_FileLoader_Clean
 from clm.utils import (
     get_gpu_utilization, print_gpu_utilization,
     DistLogger, smart_resize_embeddings, ParamChangeChecker
@@ -141,6 +141,11 @@ def train_ddp_accelerate(
     # model.gradient_checkpointing_enable()
 
     model, optimizer = accelerator.prepare(model, optimizer)
+    # debug
+    logger.log_main(model.__class__.__name__)
+    unwrapped_model = accelerator.unwrap_model(model)
+    logger.log_main(unwrapped_model.__class__.__name__)
+    exit()
     logger.log_main('Finish prepare')
     print_gpu_utilization(logger)
     
@@ -227,7 +232,7 @@ def main():
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
     # Load dataset
-    ds_cls = FileLoader_Clean
+    ds_cls = CUAD_FileLoader_Clean
     dataset = ds_cls(
         '../data/cuad_contracts', 
         tokenizer = tokenizer, max_length = args.max_length

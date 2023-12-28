@@ -65,14 +65,10 @@ class CUAD_FileLoader(IterableDataset):
         self.max_length = max_length
         self.seed = seed
 
-        self.status = {
-            'index': None,
-            'file_index': None,
-            'file_name': '',
-            'chunk_index': None
-        } 
+        self.reset()
         # record the position of current sample
         # keys: index, file_index, file_name, chunk_index
+        self.status_be_reloc = False # if status is set to somewhere not the begining, status will not be reset in __iter__
 
         if not Path(self.data_dir).exists():
             raise ValueError(f'Data folder does not exist. {self.data_dir}')
@@ -100,13 +96,17 @@ class CUAD_FileLoader(IterableDataset):
         self.all_files = all_files
 
     def __iter__(self):
+        if self.status_be_reloc:
+            self.status_be_reloc = False
+        else:
+            self.reset()
         status = self.status
         prev_file_index, prev_chunk_index = (
             status['file_index'], status['chunk_index']
         )
 
         for file_idx, file_path in enumerate(self.all_files):
-            if (prev_file_index is not None) and (file_idx < prev_file_index):
+            if (file_idx < prev_file_index):
                 continue
             
             # prev last file or a new file
@@ -117,23 +117,31 @@ class CUAD_FileLoader(IterableDataset):
             
             for chunk_i, chunk_enc in enumerate(self.process_doc(doc)):
                 if (
-                    (prev_file_index is not None)
+                    (prev_chunk_index is not None)
                     and (file_idx == prev_file_index) 
                     and chunk_i <= prev_chunk_index
                 ):
                     # in previous last doc generated chunks
                     continue
-                if status['index'] is None:
-                    status['index'] = 0
-                else:
-                    status['index'] += 1
+                
+                status['index'] += 1
                 self.status['chunk_index'] = chunk_i
+                # print(f'Before yield index {status["index"]}', flush = True)
                 yield chunk_enc
 
     def set_status(self, saved_status):
         for k in ['index', 'file_index', 'file_name', 'chunk_index']:
             self.status[k] = saved_status[k]
+        self.status_be_reloc = True
 
+    def reset(self):
+        """Return to the begin of the dataset"""
+        self.status = {
+            'index': -1,
+            'file_index': 0,
+            'file_name': '',
+            'chunk_index': None
+        } 
     
     def process_doc(self, doc):
         """
@@ -186,7 +194,7 @@ if __name__ == '__main__':
     tk = AutoTokenizer.from_pretrained(args.tokenizer)
     tk.add_special_tokens({'pad_token': '[PAD]'})
 
-    dl = FileLoader(args.data_dir, tk, max_length = 128)
+    dl = CUAD_FileLoader_Clean(args.data_dir, tk, max_length = 128)
 
     count = 0
     batch = []
