@@ -1,22 +1,33 @@
 from transformers import PreTrainedModel
 import accelerate
 from accelerate import PartialState
+from pathlib import Path
 from deepspeed.utils import safe_get_full_fp32_param
 from pynvml import *
 
 class DistLogger:
     """Logger for distributed environment"""
-    def __init__(self):
+    def __init__(self, file = None):
         if PartialState._shared_state == {}:
             raise RuntimeError('Should not initialize DistLogger before iniatializing PartialState')
         self.state = PartialState()
+        self.file = file
+        if file is not None:
+            Path(file).parent.mkdir(parents = True, exist_ok=True)
     
     def log_main(self, message):
         if self.state.local_process_index == 0:
-            print('[Main]' + message)
+            self._log('[Main]' + message)
     
     def log_process(self, message):
-            print(f'[Process {self.state.local_process_index}] {message}')
+            self._log(f'[Process {self.state.local_process_index}] {message}')
+    
+    def _log(self, message):
+        """Log message to multiple destinations"""
+        print(message)
+        if self.file is not None:
+            with open(self.file, 'a') as f:
+                f.write(message + '\n')
 
 def get_gpu_utilization():
     """Return GPU used RAM in MB"""

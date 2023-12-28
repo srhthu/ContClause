@@ -10,6 +10,8 @@ Aim:
 """
 import argparse
 import sys
+import re
+import shutil
 from pathlib import Path
 import json
 import torch
@@ -33,14 +35,15 @@ import deepspeed
 from deepspeed.utils import safe_get_full_fp32_param
 import accelerate
 from accelerate import PartialState, Accelerator
-from accelerate.utils import DummyOptim
+from accelerate.utils import DummyOptim, DistributedType
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from pynvml import *
+import torch.distributed as dist
 
 from clm.data_loader import FileLoader, FileLoader_Clean
 from clm.utils import (
-    get_gpu_utilization, print_gpu_utilization, logger,
+    get_gpu_utilization, print_gpu_utilization,
     DistLogger, smart_resize_embeddings, ParamChangeChecker
 )
 from clm.prepare import (
@@ -80,7 +83,8 @@ def train_ddp_accelerate(
     accelerator: Accelerator, 
     model, 
     dataloader, 
-    ignore_index
+    ignore_index,
+    logger
 ):
     """
     Train with DDP.
@@ -141,7 +145,13 @@ def train_ddp_accelerate(
             loss_host = 0.0
         
         if (total_step + 1) % (args.save_steps) == 0:
-            save_checkpoint(total_step+1, model, optimizer, dataloader)
+            if args.output_dir is not None:
+                ckpt_dir = Path(args.output_dir / f'checkpoint-{total_step + 1}')
+                logger.log_main(f'Save checkpoint {total_step + 1}')
+                save_checkpoint(ckpt_dir, accelerator, model, optimizer, dataloader)
+
+                # remove extra checkpoint
+                rotate_checkpoints(args.output_dir, args.save_total_limit)
         
         total_step += 1
     
@@ -153,8 +163,38 @@ def write_loss_log(run_dir, loss_log: dict):
     with open(Path(run_dir) / 'loss_log.jsonl', 'a') as f:
         f.write(json.dumps(loss_log, ensure_ascii=False) + '\n')
 
-def save_checkpoint(total_step, model, optimizer, dataloader):
-    ...
+def save_checkpoint(ckpt_dir, accelerator:Accelerator, model, optimizer, dataloader):
+    dl_state = dataloader.dataset.state
+    with open(Path(ckpt_dir) / 'dataset_state.json') as f:
+        json.dump(dl_state, f, ensure_ascii=False)
+    
+    if accelerator.distributed_type == DistributedType.DEEPSPEED:
+        model.save_checkpoint(ckpt_dir)
+    elif accelerator.distributed_type == DistributedType.MULTI_GPU:
+        if accelerator.local_process_index == 0:
+            torch.save(model.state_dict(), str(Path(ckpt_dir)/'pytorch_model.bin'))
+            torch.save(optimizer.state_dict(), str(Path(ckpt_dir)/'optimizer.pt') )
+    else:
+        raise ValueError(f'distributed type not supported: {accelerator.distributed_type}')
+    
+    dist.barrier()
+
+def rotate_checkpoints(output_dir, save_total_limit):
+    glob_checkpoints = [str(x) for x in Path(output_dir).glob(f'checkpoint-*') if x.is_dir()]
+
+    ordered_ckpts = []
+    for path in glob_checkpoints:
+        regex_match = re.match(f".*checkpoint-([0-9]+)", path)
+        if regex_match is not None and regex_match.groups() is not None:
+            ordered_ckpts.append((
+                int(regex_match.groups()[0]), path
+            ))
+    
+    ordered_ckpts.sort(key = lambda k: k[0])
+
+    n_ckpt_to_delete = max(0, len(ordered_ckpts) - save_total_limit)
+    for step, checkpoint in ordered_ckpts[:n_ckpt_to_delete]:
+        shutil.rmtree(checkpoint, ignore_errors = True)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -164,11 +204,14 @@ def main():
     parser.add_argument('--dtype', choices = ['fp16', 'bf16', 'fp32'], default = 'bf16')
     parser.add_argument('--ds_config')
     parser.add_argument('--lr', type = float, default = 1e-4)
-    parser.add_argument('--max_steps', type = int, default = 30)
-    parser.add_argument('--log_steps', type = int, default = 5)
-    parser.add_argument('--save_steps', type = int)
-    parser.add_argument('--device_bs', type = int, default = 2)
     parser.add_argument('--total_bs', type = int, default = 128)
+    parser.add_argument('--max_epochs', type = int, default = 1)
+    parser.add_argument('--max_steps', type = int, default = 30)
+    parser.add_argument('--log_steps', type = int, default = 5, help = 'macro steps')
+    parser.add_argument('--save_steps', type = int, default = 512000)
+    parser.add_argument('--device_bs', type = int, default = 2)
+    
+    parser.add_argument('--save_total_limit', type = int, default = 5)
     
     parser.add_argument('--max_length', type = int, default = 1024)
 
@@ -178,15 +221,27 @@ def main():
 
     torch_dtype_map = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': torch.float32}
 
+    # Initialize distribution environment
+    accelerator, ds_config = initialize_accelerator(
+        args.ds_config, args.device_bs, args.grad_acc_steps
+    )
     state = PartialState()
+    
+    # Get logger
+    log_file = None if args.output_dir is None else str(Path(args.output_dir / 'log.txt'))
+    logger = DistLogger(file = log_file)
 
+    # determin gradient_accumulation_step
     grad_acc_steps, left = divmod(args.total_bs, args.device_bs * state.num_processes)
     assert left == 0
     args.grad_acc_steps = grad_acc_steps
 
-    accelerator, ds_config = initialize_accelerator(
-        args.ds_config, args.device_bs, args.grad_acc_steps
-    )
+    # save args
+    if args.output_dir is not None:
+        Path(args.output_dir).mkdir(parents = True, exist_ok = False)
+        with open(Path(args.output_dir) / 'args.json') as f:
+            json.dump(args.__dict__, f)
+    logger.log_main(f'Training args:\n {json.dumps(args.__dict__, indent = 4, ensure_ascii=False)}')
 
     # Build tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code = True)
@@ -212,7 +267,11 @@ def main():
 
     smart_resize_embeddings(tokenizer, model)
 
-    logs, engine = train_ddp_accelerate(args, accelerator, model, dataloader, ignore_index = tokenizer.pad_token_id)
+    logs, engine = train_ddp_accelerate(
+        args, accelerator, model, dataloader, 
+        ignore_index = tokenizer.pad_token_id,
+        logger = logger
+    )
 
     all_time = [k['time'] for k in logs[1:]]
     logger.log_main(f'Average log duration: {np.mean(all_time)}')

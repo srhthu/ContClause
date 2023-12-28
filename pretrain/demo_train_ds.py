@@ -66,16 +66,16 @@ def compute_loss(model, batch, ignore_index):
     return loss
 
 
-def train_with_deepspeed(args, model, dataloader, ds_config, ignore_index):
+def train_with_deepspeed(args, model, dataloader, ds_config, ignore_index, logger):
     logger.log_main('Build deepspeed engine')
     model_engine, optimizer, _, _ = deepspeed.initialize(
         model = model,
         model_parameters = model.parameters(),
         config = ds_config
     )
-    training_loop_deepspeed(args, model_engine, dataloader, ignore_index)
+    training_loop_deepspeed(args, model_engine, dataloader, ignore_index, logger)
 
-def training_loop_deepspeed(args, model, dataloader, ignore_index):
+def training_loop_deepspeed(args, model, dataloader, ignore_index, logger):
     """
     Model is a deepspeed engine.
     """
@@ -254,7 +254,11 @@ def main():
     time.sleep(3)
 
     if args.lib == 'deepspeed':
-        train_with_deepspeed(args, model, dataloader, ds_config, ignore_index=tokenizer.pad_token_id)
+        train_with_deepspeed(
+            args, model, dataloader, ds_config, 
+            ignore_index=tokenizer.pad_token_id,
+            logger = logger
+    )
     elif args.lib == 'accelerate':
         logs, engine = train_ddp_accelerate(
             args, accelerator, model, dataloader, 
