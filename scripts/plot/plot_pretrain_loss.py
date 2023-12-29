@@ -44,3 +44,9 @@ for k,v in results.items():
     plt.plot(*v, label = str(k))
 plt.legend()
 # %%
+logs = [json.loads(k) for k in open('../../pretrain/runs/cuad_phi-15_zero1/loss_log.jsonl')]
+# %%
+steps, losses = [[k[n] for k in logs] for n in ['step', 'loss']]
+# %%
+plt.plot(np.log10(steps), losses)
+# %%
