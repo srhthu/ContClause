@@ -29,7 +29,18 @@ fi
 tar -xzf contracts.tar.gz -C cuad_contracts
 ```
 
-## Data Process Pipeline
+# Pipeline for Generative Methods
+## Overview
+First, we pre-process the original dataset to [Link](#"Text Pre-process")
+- remove extra spaces and newlines
+- sort answer spans and merge overlapping spans.
+- convert to a concise structure
+
+## Data  Process
+### Text Pre-process
+
+
+# Pipeline for QA Span baseline
 ### Document Tokenization
 Run `cont_gen/data_process/cut_doc.py` with argumetns:
 ```Bash
@@ -85,9 +96,13 @@ python -m cont_gen.train_qa --features data/features/qa_roberta_train.pkl --base
 Output:  each result is a dict of 'start_logits', 'end_logits'
 
 ### Infer QA model
+For each feature, output `start_logits` and `end_logits`
 ```Bash
 # for debug
 python -m cont_gen.infer_qa --save_path runs/debug/model_outputs.pkl --ckpt roberta-base --features data/features/qa_roberta_test.pkl
+
+# infer one checkpoint
+python -m cont_gen.infer_qa --features data/features/qa_roberta_test.pkl --ckpt runs/qa/roberta-base_lr1e-4_bs16/checkpoint-13000
 
 # infer all checkpoints
 python -m cont_gen.infer_qa --features data/features/qa_roberta_test.pkl --exp_dir  runs/qa/roberta-base_lr1e-4_bs16
@@ -103,14 +118,14 @@ For each feature, propose n_best start and end indexes, and save all possible co
     start_logit
     end_logit
 ```
-Given all prelim predictions, filter top ranking predictions, and get the answer span text and position
-```
+Get the prediction of each QA example (`qa_id`). Given all prelim predictions, filter top ranking predictions, and get the answer span text and position
+```Json
     text
-    start_logit
-    end_logit
-    char_start
-    char_end
-    token_start # start position in doc tokens
+    start_logit: span start token logit
+    end_logit: span end token logit
+    char_start: start position of the character in original doc
+    char_end: 
+    token_start:  start position in doc tokens
     token_end
     qa_id: to locate the example
     feature_index
@@ -127,6 +142,9 @@ Output:
     score_null
     pred_text
 ```
+
+### Get metrics
+
 
 ## Note
 answer spans can overlap.

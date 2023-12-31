@@ -2,7 +2,7 @@
 from functools import cmp_to_key
 from typing import List, Dict, Tuple, Optional, Union, Any
 
-def convert_token_char_map(token_to_char, length):
+def convert_token_char_map(token_to_char: List[Tuple[int, int]], length):
     """
     Given the token_to_char map, return the char_to_token map.
     For space that not in token, return None.

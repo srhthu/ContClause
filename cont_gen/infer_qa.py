@@ -49,8 +49,9 @@ def infer_and_save(ckpt_dir, features, trainer_config, save_path = None):
     )
 
     all_preds, _ = trainer.eval_loop(features)
+
+    print('Finish infer')
     
-    # convert column to row
     keys = list(all_preds.keys())
     # print(f'Output keys: {keys}')
     results = [
@@ -66,10 +67,10 @@ def infer_and_save(ckpt_dir, features, trainer_config, save_path = None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--save_path', help = 'path to save results')
-    parser.add_argument('--ckpt')
+    parser.add_argument('--ckpt', help = 'only infer on one checkpoint')
     parser.add_argument('--exp_dir', help = 'dir contain multiple checkpoints')
     parser.add_argument('--features')
-    parser.add_argument('--device_batch_size', type = int, default = 16)
+    parser.add_argument('--device_batch_size', type = int, default = 4)
     
     args = parser.parse_args()
     
@@ -85,9 +86,13 @@ def main():
         ckpt_dir_list = [str(k) for k in Path(args.exp_dir).glob('checkpoint-*')]
     else:
         ckpt_dir_list = [args.ckpt]
+    
     for ckpt in ckpt_dir_list:
-        print(f'Infer checkpoint: {ckpt}')
-        infer_and_save(ckpt, features, config, save_path = args.save_path)
+        save_path = args.save_path if args.save_path is not None \
+                        else Path(ckpt) / 'model_outputs.pkl'
+        Path(save_path).parent.mkdir(exist_ok=True, parents=True)
+        print(f'Infer checkpoint: {ckpt}, save results to {save_path}, exist = {Path(save_path).exists()}')
+        infer_and_save(ckpt, features, config, save_path = save_path)
     
 
 if __name__ == '__main__':

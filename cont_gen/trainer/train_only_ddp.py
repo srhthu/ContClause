@@ -7,7 +7,7 @@ import sys
 import json
 import logging
 from tokenize import Name
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union, Mapping
 from dataclasses import dataclass, field
 import math
 import numpy as np
@@ -328,7 +328,55 @@ class Trainer_Onlytrain_DDP:
         bar.close()
         
         return all_preds_host, all_inputs_host
+    
+    def eval_loop_debug(self, eval_dataset):
+        """This is the debug version"""
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        model = self.model.cuda()
+
+        all_preds_list = []
+        all_inputs_list = []
+        all_preds_host = None
+        all_inputs_host = None
+        bar = tqdm(
+            total = len(eval_dataloader), dynamic_ncols= True,
+        )
+        ct = 0
+        for batch in eval_dataloader:
+            batch = {k:v.cuda() for k,v in batch.items()}
+            with torch.no_grad():
+                preds = self.compute_preds(model, batch)
+
+            # preds, batch = self.accelerator.gather_for_metrics((preds, batch))
+            # transfer to cpu to save memory
+            all_preds, all_inputs = nested_to_cpu(preds), nested_to_cpu(batch)
+            all_preds = {k:v.numpy() for k,v in all_preds.items()}
+
+            # all_preds_list.append(all_preds)
+            # all_inputs_list.append(all_inputs)
+            all_preds_host = (all_preds if all_preds_host is None 
+                              else nested_concat(all_preds_host, all_preds))
+            # all_inputs_host = (all_inputs if all_inputs_host is None 
+            #                    else nested_concat(all_inputs_host, all_inputs))
+
+            bar.update()
+            ct += 1
+            if ct >= 400:
+                break
+        bar.close()
         
+        # print('concatenate batch results')
+        # # gather values for each field
+        # pred_batch_values = zip(*[k.values() for k in all_preds_list]) # i-th is all batch result if i-th field
+        # pred_values = [torch.cat(k) for k in pred_batch_values]
+        # pred_sample_values = zip(*pred_values) # the i-th is the pred values of i-th sample
+        # preds_by_sample = [dict(zip(all_preds_list[0].keys(), v)) for v in pred_sample_values]
+        # print(f'Total: {len(preds_by_sample)}')
+        # for k,v in preds_by_sample[0].items():
+        #     print(f'{k}: {v.shape}')
+
+        return all_preds_list, all_inputs_list
+
     
     def get_eval_dataloader(self, eval_dataset):
         return DataLoader(
@@ -340,3 +388,46 @@ class Trainer_Onlytrain_DDP:
     def compute_preds(self, model, batch):
         return model(**batch)
     
+
+def nested_concat(tensors, new_tensors):
+    return {k:np.concatenate([v, new_tensors[k]])  for k,v in tensors.items()}
+
+def nested_concat2(tensors, new_tensors, padding_index=-100):
+    """
+    Concat the `new_tensors` to `tensors` on the first dim and pad them on the second if needed. Works for tensors or
+    nested list/tuples/dict of tensors.
+    """
+    assert type(tensors) == type(
+        new_tensors
+    ), f"Expected `tensors` and `new_tensors` to have the same type but found {type(tensors)} and {type(new_tensors)}."
+    if isinstance(tensors, (list, tuple)):
+        return type(tensors)(nested_concat(t, n, padding_index=padding_index) for t, n in zip(tensors, new_tensors))
+    elif isinstance(tensors, torch.Tensor):
+        return torch_pad_and_concatenate(tensors, new_tensors, padding_index=padding_index)
+    elif isinstance(tensors, Mapping):
+        return type(tensors)(
+            {k: nested_concat(t, new_tensors[k], padding_index=padding_index) for k, t in tensors.items()}
+        )
+    else:
+        raise TypeError(f"Unsupported type for concatenation: got {type(tensors)}")
+
+def torch_pad_and_concatenate(tensor1, tensor2, padding_index=-100):
+    """Concatenates `tensor1` and `tensor2` on first axis, applying padding on the second if necessary."""
+    tensor1 = atleast_1d(tensor1)
+    tensor2 = atleast_1d(tensor2)
+
+    if len(tensor1.shape) == 1 or tensor1.shape[1] == tensor2.shape[1]:
+        return torch.cat((tensor1, tensor2), dim=0)
+        # return tensor2
+
+    return None
+
+def atleast_1d(tensor_or_array: Union[torch.Tensor, np.ndarray]):
+    if isinstance(tensor_or_array, torch.Tensor):
+        if hasattr(torch, "atleast_1d"):
+            tensor_or_array = torch.atleast_1d(tensor_or_array)
+        elif tensor_or_array.ndim < 1:
+            tensor_or_array = tensor_or_array[None]
+    else:
+        tensor_or_array = np.atleast_1d(tensor_or_array)
+    return tensor_or_array
