@@ -38,6 +38,43 @@ First, we pre-process the original dataset to [Link](#"Text Pre-process")
 
 ## Data  Process
 ### Text Pre-process
+**Code**: `data_process/pre_process.py`
+
+**Run**: 
+```
+python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.json
+```
+
+**Input**: original SQUAD data format
+
+**Output**:
+output to `data/cuad_clean/CUADv1.jsonl` in such format
+```json
+title: the UID of the document
+doc_text: the contract document
+qas: a list of question-answer information
+    qa_id: the UID of the document-question pair
+    question
+    is_impossible (`bool`): True if has answers
+    answers: a list of answers
+        text: answer text
+        start_pos: position of the start character
+        end_pos: position of the end character
+new2old_map: (List[int])
+```
+
+### Split paragraphs
+**Code**: `data_process/split_para.py`
+
+**Aim**:
+- Split by paragraph, and merge short paragraphs
+- Find QAs in this paragraph and relocate the answer position
+
+**Run**
+
+**Input**
+
+**Output**
 
 
 # Pipeline for QA Span baseline

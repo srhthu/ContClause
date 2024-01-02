@@ -54,19 +54,23 @@ def cut_spans_return_offset(ori_text: str, span_pos: List[Tuple[int, int]]):
         text_parts (List[str])
         offsets (List[int])
     """
+    # sort the spans
+    span_pos = sorted(span_pos, key = lambda k: k[0])
+    
     # add a pseudo span at the end of the doc
     if len(span_pos) == 0 or span_pos[-1][-1] < len(ori_text):
         # add a pseudo linebreak at the end of the doc
-        span_pos.append([len(ori_text), None])
+        span_pos.append([len(ori_text), None])    
     
     # get split text parts
     text_parts = []
     offsets = []
     cur_start = 0 # the start position of current paragraph
+    # traverse the removed spans and add the previous text trunk into text_parts
     for sp_st, sp_end in span_pos:
         p_text = ori_text[cur_start: sp_st]
         if len(p_text) > 0:
-            # the removed span is NOT at the begin of ori_text
+            # make sure the removed span is NOT at the begin of ori_text
             text_parts.append(p_text)
             offsets.append(cur_start)
 
