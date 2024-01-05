@@ -31,10 +31,21 @@ tar -xzf contracts.tar.gz -C cuad_contracts
 
 # Pipeline for Generative Methods
 ## Overview
-First, we pre-process the original dataset to [Link](#"Text Pre-process")
+First, we pre-process the original dataset to [Link](#text-pre-process)
 - remove extra spaces and newlines
 - sort answer spans and merge overlapping spans.
 - convert to a concise structure
+
+Then, we split documents into paragraphs and relocate the answers of each paragraph. [Link](#split-paragraphs)
+
+Next, we **merge short paragraphs** with the next one. [Link](#merge-short-paragraphs)
+- short paragraphs can be chapter titles
+- If len(cur_p) < thresh 1 and len(next_p) < thresh 2; merge
+- Repeat the process
+
+Next, we build features for training and test. [Link](#build-features)
+- For training, we sample negative paragraphs for each question. 
+- For test, we ask all question for each paragraph with length > 10
 
 ## Data  Process
 ### Text Pre-process
@@ -42,7 +53,7 @@ First, we pre-process the original dataset to [Link](#"Text Pre-process")
 
 **Run**: 
 ```
-python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.json
+python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.jsonl
 ```
 
 **Input**: original SQUAD data format
@@ -67,14 +78,52 @@ new2old_map: (List[int])
 **Code**: `data_process/split_para.py`
 
 **Aim**:
-- Split by paragraph, and merge short paragraphs
+- Split by paragraph
 - Find QAs in this paragraph and relocate the answer position
 
 **Run**
-
+```
+python -m cont_gen.data_process.split_para data/cuad_clean/CUADv1.jsonl data/cuad_clean/CUADv1_paras.jsonl
+```
 **Input**
+`data/cuad_clean/CUADv1.jsonl`
 
 **Output**
+
+`data/cuad_clean/CUADv1_paras.jsonl`: A list of contract samples. Each sample contains several paragraphs.
+```
+title: the UID of the document
+paras: a list of paragraphs
+    text: paragraph text
+    offset: start index of the first character
+    qas: a list of **available** QA pairs
+        qa_id: UID of form {title}_{quest}_{span_id}
+        q_id: index of question.
+        answers: a list of answers
+            text: answer text
+            start_pos: position of the start character
+            end_pos: position of the end character
+```
+
+### Merge short paragraphs
+**Code**: `data_process/merge_short.py`
+
+**Run**
+```Bash
+python -m cont_gen.data_process.merge_short data/cuad_clean/CUADv1_paras.jsonl data/cuad_clean/CUADv1_paras_merge.jsonl
+```
+
+**Input**: paragraph data, `data/cuad_clean/CUADv1_paras.jsonl`
+
+**Output**: same format with merged paragraph data. `data/cuad_clean/CUADv1_paras_merge.jsonl`
+
+Note: the average number of paragraphs change from **145.97** to **61.37**; the average length of paragraphs increase from **344.89** to **821.63**
+
+### Build features
+Given paragraph data, we convert to features for model.
+
+Specifically, we do 
+- 
 
 
 # Pipeline for QA Span baseline
