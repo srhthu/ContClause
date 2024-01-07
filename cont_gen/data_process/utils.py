@@ -1,6 +1,8 @@
 """Shared functions"""
 from functools import cmp_to_key
 from typing import List, Dict, Tuple, Optional, Union, Any
+import numpy as np
+import random
 
 def convert_token_char_map(token_to_char: List[Tuple[int, int]], length):
     """
@@ -112,6 +114,23 @@ def cmp_span(span1, span2):
         else:
             return 0
 
+def overlap_of_two_span(pos_1, pos_2):
+    """
+    Given the position of two span, return the overlap span position if any or None.
+    """
+    # if there are overlapping, only two case
+    # the left of one span fall into the other span
+
+    # We use a heuristic method to determin the overlapping boundary
+    ol_left = max(pos_1[0], pos_2[0])
+    ol_right = min(pos_1[1], pos_2[1])
+
+    if ol_left <= ol_right:
+        return (ol_left, ol_right)
+    else:
+        return None
+    
+
 def merge_spans(span_pos: List[Tuple[int, int]]):
     """
     Merge overlapped spans and return in order.
@@ -182,6 +201,7 @@ def get_doc_with_spans(data):
         })
     return sim_dataset
 
+# Others
 def group_by(examples: List[Dict[str, Any]], key):
     """
     Groub examples by key. Follow the group presence order.
@@ -196,3 +216,9 @@ def group_by(examples: List[Dict[str, Any]], key):
         else:
             groups[gname2id[gname]].append(e)
     return groups
+
+def rand_choice(l, n):
+    """Randomly choice n elements of list l without replacement"""
+    if n > len(l):
+        return [*l]
+    return random.sample(l, n)

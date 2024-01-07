@@ -40,12 +40,24 @@ Then, we split documents into paragraphs and relocate the answers of each paragr
 
 Next, we **merge short paragraphs** with the next one. [Link](#merge-short-paragraphs)
 - short paragraphs can be chapter titles
-- If len(cur_p) < thresh 1 and len(next_p) < thresh 2; merge
+- If len(cur_p) < thresh 1 ; then merge it with the next paragraph
 - Repeat the process
+
+Before building feature, we prepare the questions for each clause. [Link](#question-prepare)
+
+Further split paragraphs into chunks to fit in a max token length of a tokenizer. [Link](#split-by-tokenized-length)
+
+Next, we build the full prompts with provisions (contract text), questions and answers. [Link]()
 
 Next, we build features for training and test. [Link](#build-features)
 - For training, we sample negative paragraphs for each question. 
 - For test, we ask all question for each paragraph with length > 10
+
+### Statistics
+There are 510 contracts, 6702 available clauses annotated. Among them, 2594 clauses have multiple spans. 
+
+Train prompts: 16,723
+Test prompts: 229,518 (5598 chunks)
 
 ## Data  Process
 ### Text Pre-process
@@ -119,11 +131,63 @@ python -m cont_gen.data_process.merge_short data/cuad_clean/CUADv1_paras.jsonl d
 
 Note: the average number of paragraphs change from **145.97** to **61.37**; the average length of paragraphs increase from **344.89** to **821.63**
 
-### Build features
-Given paragraph data, we convert to features for model.
+### Question Prepare
+Prepare the questions for each clause. 
 
-Specifically, we do 
-- 
+**Script**: `scripts/prepare_questions.py`
+
+**Output**: `data/clause/`
+- `clause_info.json`: a list of clause information extracted from readme file.
+  Include "category", "desc", "answer_format" and "group"
+- `prompt_quest_desc.json` and `prompt_quest.json` the prompt for questions. List[str]
+
+### Split by Tokenized Length
+Split paragraphs into chunks to fit in a max token length. Output is a flatten structure.
+
+**Script**: `cont_gen/data_process/split_para_to_chunks.py`
+
+**Run**
+```Bash
+python -m cont_gen.data_process.split_para_to_chunks data/cuad_clean/CUADv1_paras_merge.jsonl data/cuad_clean/CUADv1_chunks_merge.jsonl microsoft/phi-1_5 512
+```
+
+**Input**: paragraph data (merged): `data/cuad_clean/CUADv1_paras_merge.jsonl`
+
+**Output**: 
+`data/cuad_clean/CUADv1_chunks_merge.jsonl` in a flat structure.
+```
+title, chunk_index, text, para_idx, para_offset, qas
+```
+
+### Build SFT Data
+Build full prompts. For training, we sample negative examples.
+
+**Code**: `cont_gen/data_process/build_qagen_sft.py`
+
+**Run**
+```Bash
+# suffix can be quest or quest_desc
+suffix=quest
+# suffix=quest_desc
+
+# build training data
+python -m cont_gen.data_process.build_qagen_sft \
+data/cuad_clean/CUADv1_chunks_merge.jsonl \
+data/cuad_prompts/train_prompts_${suffix}.jsonl \
+microsoft/phi-1_5 80 \
+--quest data/clause/prompt_${suffix}.json \
+--train_split data/cuad_split/train_separate_questions.json
+
+# build test data
+python -m cont_gen.data_process.build_qagen_sft \
+data/cuad_clean/CUADv1_chunks_merge.jsonl \
+data/cuad_prompts/test_prompts_${suffix}.jsonl \
+microsoft/phi-1_5 80 \
+--quest data/clause/prompt_${suffix}.json \
+--test_split data/cuad_split/test.json
+```
+
+**Output**: 
 
 
 # Pipeline for QA Span baseline

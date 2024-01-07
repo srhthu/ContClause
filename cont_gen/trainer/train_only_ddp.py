@@ -80,7 +80,7 @@ class TrainingArgs:
         )
         self.gradient_accumulation_steps = g_acc_step
         
-class DistLogger:
+class DistMainLogger:
     """Only log on the local main process"""
     def __init__(self, name, output_dir = None):
         self.logger = logging.getLogger(name)
@@ -95,6 +95,9 @@ class DistLogger:
         
         self.logger.setLevel(10)
 
+        if PartialState._shared_state == {}:
+            raise RuntimeError('Should not initialize DistLogger before iniatializing PartialState')
+        
         self.state = PartialState()
 
     def info(self, msg, disable_std = False):
@@ -105,6 +108,9 @@ class DistLogger:
                 self.logger.addHandler(self.std_hdl)
                 self.logger.info(msg)
                 self.logger.removeHandler(self.std_hdl)
+
+# for compatible
+DistLogger = DistMainLogger
 
 class Trainer_Onlytrain_DDP:
     """

@@ -33,6 +33,11 @@ with open('../data/cuad_clean/CUADv1_paras.jsonl') as f:
     paras_data = [json.loads(k) for k in f]    
 with open('../data/cuad_clean/CUADv1_paras_merge.jsonl') as f:
     paras_merge_data = [json.loads(k) for k in f] 
+
+# %%
+with open('../data/cuad_clean/CUADv1_chunks_merge.jsonl') as f:
+    chunk_data = [json.loads(k) for k in f] 
+
 # %%
 ori_sample = ori_data['data'][0]
 cln_sample = clean_data[0]
@@ -132,6 +137,31 @@ ave_p_len = np.mean([len(p['text']) for d in paras_data for p in d['paras']])
 ave_p_len_merge = np.mean([len(p['text']) for d in paras_merge_data for p in d['paras']])
 print(ave_p_len)
 print(ave_p_len_merge)
+# %%
+# [TODO] check the chunk data
+# %%
+# Find spans that are too close and should be merged
+all_span_dist = []
+for idx, sample in enumerate(clean_data):
+    for qidx, qa in enumerate(sample['qas']):
+        span_dist = [(
+            qa['answers'][i]['start_pos'] 
+            - qa['answers'][i-1]['end_pos']
+            ) for i in range(1, len(qa['answers']))]
+        if len(span_dist) > 0:
+            all_span_dist.append((idx, qidx, span_dist))
+print('Total qas:', len([qa for sample in clean_data for qa in sample['qas'] if not qa['is_impossible']]))
+print('total span_dist', len(all_span_dist))
+# %%
+_ = plt.hist([min(k[2]) for k in all_span_dist], bins = 50, range = (0, 100))
+# %%
+# find annotations with span dist == 2
+part_span_dist = [k for k in all_span_dist if min(k[2]) == 6]
+print(len(part_span_dist))
+# %%
+t = part_span_dist[2]
+for ele in clean_data[t[0]]['qas'][t[1]]['answers']:
+    print(ele)
 # %%
 # get key value pairs
 def get_clause_values(sample):

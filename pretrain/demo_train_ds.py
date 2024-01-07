@@ -145,7 +145,7 @@ def train_ddp_accelerate(
     logger.log_main(model.__class__.__name__)
     unwrapped_model = accelerator.unwrap_model(model)
     logger.log_main(unwrapped_model.__class__.__name__)
-    exit()
+    
     logger.log_main('Finish prepare')
     print_gpu_utilization(logger)
     
