@@ -1,5 +1,8 @@
 """
 Trainer that only train the model, no evaluate, DDP setting.
+
+[BUG] This code has errors of gradiant accumulation.
+Use train_only_accelerate instead
 """
 
 import os

@@ -189,6 +189,13 @@ microsoft/phi-1_5 80 \
 
 **Output**: 
 
+## Training
+training code: `cont_gen/train_genqa.py`
+
+Run the script: 
+- `sh/genqa_phi15_ds.sh`: use deepspeed zero stage 1 to train the model
+
+## Evaluating
 
 # Pipeline for QA Span baseline
 ### Document Tokenization
