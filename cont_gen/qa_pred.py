@@ -54,7 +54,7 @@ def main():
     pred_sufix = f'ml{args.max_answer_length}'
     if Path(args.model_outputs).is_file():
         res_path = args.model_outputs
-        save_path = Path(args.model_outputs) / f'predictions_{pred_sufix}.pkl'
+        save_path = Path(args.model_outputs).parent / f'predictions_{pred_sufix}.pkl'
     elif Path(args.model_outputs).is_dir():
         res_path = Path(args.model_outputs) / 'model_outputs.pkl'
         save_path = Path(args.model_outputs) / f'predictions_{pred_sufix}.pkl'

@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 import time
 from typing import Tuple
-from transformers.deepspeed import HfTrainerDeepSpeedConfig
+from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
 from accelerate import PartialState, Accelerator
 from accelerate.utils import DeepSpeedPlugin
 

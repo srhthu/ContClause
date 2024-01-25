@@ -3,7 +3,9 @@ from functools import cmp_to_key
 from typing import List, Dict, Tuple, Optional, Union, Any
 import numpy as np
 import random
+from transformers import PreTrainedTokenizer
 
+# Functions related to Tokenization
 def convert_token_char_map(token_to_char: List[Tuple[int, int]], length):
     """
     Given the token_to_char map, return the char_to_token map.
@@ -44,6 +46,27 @@ def reverse_char_map(char_map, tot_len = None):
                 r_char_map[i+1] = r_char_map[i]
             i += 1
     return r_char_map
+
+def tokenize_wo_eos(tokenizer: PreTrainedTokenizer, text):
+    """tokenize the text without add eos_token"""
+    enc = tokenizer(text)
+    if (
+        "eos_token" in tokenizer.special_tokens_map
+        and enc.input_ids[-1] == tokenizer.eos_token_id
+    ):
+        enc.input_ids = enc.input_ids[:-1]
+        enc.attention_mask = enc.attention_mask[:-1]
+    return enc
+
+def ommit_middle(text, tokenizer, max_len):
+    """If num of tokens > max_len, only keep the first and tail max_len/2 tokens"""
+    enc = tokenizer(text)
+    if len(enc['input_ids']) <= max_len:
+        return text
+    else:
+        head_end = enc.token_to_chars(max_len // 2 - 1).end
+        tail_start = enc.token_to_chars(len(enc['input_ids']) - max_len // 2).start
+        return text[:head_end] + ' ... ' + text[tail_start:]
 
 # Functions related to remove some spans from a string
 def cut_spans_return_offset(ori_text: str, span_pos: List[Tuple[int, int]]):

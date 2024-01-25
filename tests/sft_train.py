@@ -39,18 +39,20 @@ reload(cont_gen)
 reload(utils_dist)
 reload(train_only_accelerate)
 reload(dl_cuad)
-from cont_gen.data_loader.cuad_prompt import CUAD_SFT, SFT_Padding
+from cont_gen.data_loader.cuad_prompt import CUAD_SFT, SFT_Padding, CUAD_SFT_Seq2Seq
 # %%
 phi_tk = AutoTokenizer.from_pretrained('/storage_fast/rhshui/llm/ms-phi-1_5')
 print(phi_tk.special_tokens_map)
 gpt2_tk = AutoTokenizer.from_pretrained('gpt2')
 print(gpt2_tk.special_tokens_map)
+t5_tk = AutoTokenizer.from_pretrained('google/flan-t5-base')
 # %%
-dataset = CUAD_SFT('../data/cuad_prompts/train_prompts_quest.jsonl', 
-                   phi_tk, max_length = 1200, small = True)
+dataset = CUAD_SFT_Seq2Seq('../data/cuad_prompts/train_prompts_quest.jsonl', 
+                   t5_tk, max_length = 1200, 
+                   labels_on_full= False, small = True)
 # %%
 # test collate function
-tokenizer = phi_tk
+tokenizer = t5_tk
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 collator = SFT_Padding(tokenizer.pad_token_id, pad_side = 'right')

@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Mapping
 import traceback
 
 import torch
+import torch.distributed as dist
 from torch.utils.data import DataLoader, IterableDataset
 from transformers import PreTrainedModel
 from transformers.data.data_collator import default_data_collator
@@ -30,6 +31,7 @@ from accelerate import PartialState, Accelerator
 from accelerate.utils import DummyOptim, DistributedType
 
 from .utils_dist import is_state_initialized, initialize_accelerator, DistLogger
+from .utils import nested_to_cpu
 
 @dataclass
 class TrainingArgs_Basic:
@@ -138,6 +140,7 @@ class Trainer_Basic:
             self.train_dataset, 
             batch_size = args.device_batch_size, 
             collate_fn = self.collate_fn,
+            shuffle = True,
             drop_last = True
         )
         # prepare model and optimize
@@ -307,3 +310,70 @@ class Trainer_Basic:
             self.logger.log(f'Delete old checkpoint: {checkpoint}')
             shutil.rmtree(checkpoint, ignore_errors = True)
 
+
+class Predictor:
+    """
+    Predict in distributed setting.
+    """
+    def __init__(self, accelerator = None, batch_size = 1, compute_preds_fn = None, collate_fn = None):
+        self.accelerator = accelerator if accelerator else Accelerator()
+        self.batch_size = batch_size
+        self.compute_preds_fn = compute_preds_fn
+        self.collate_fn = collate_fn if collate_fn else default_data_collator
+    
+    def predict(self, model, dataset):
+        """Return predic results of each sample"""
+        accelerator = self.accelerator
+        # get dataloader
+        dataloader = DataLoader(
+            dataset, batch_size = self.batch_size, 
+            shuffle = False, drop_last = False, 
+            collate_fn = self.collate_fn
+        )
+        # prepare for distributed system
+        dataloader = accelerator.prepare(dataloader)
+        # Do not prepare the model but use the original one.
+        model.cuda(accelerator.local_process_index)
+        model.eval()
+
+        bar = tqdm(
+            total = len(dataloader), ncols= 100, 
+            disable = not self.accelerator.is_local_main_process
+        )
+        
+        all_preds = [] if accelerator.is_main_process else None # sample predictions
+        for batch in dataloader:
+            with torch.no_grad():
+                preds = self.compute_preds_fn(model, batch)
+            device_sample_preds = self.batch_result_to_samples(preds)
+            
+            gathered_preds = self.gather_object(device_sample_preds)
+            if accelerator.is_main_process:
+                for dev_preds in gathered_preds:
+                    for sample_pred in dev_preds:
+                        all_preds.append(nested_to_cpu(sample_pred))
+            
+            accelerator.wait_for_everyone()
+            
+            bar.update()
+
+        return all_preds
+        
+    def batch_result_to_samples(self, batch_results):
+        """Convert a batch result (dict or list) to sample result"""
+        if isinstance(batch_results, Mapping):
+            keys = list(batch_results.keys())
+            sample_results = list(zip(*batch_results.values()))
+            return [dict(zip(keys, r)) for r in sample_results]
+
+        elif isinstance(batch_results, (list, tuple)):
+            return list(zip(*batch_results))
+        
+    def gather_object(self, data):
+        accelerator = self.accelerator
+        output = [None] * accelerator.num_processes if accelerator.is_main_process else None
+        dist.gather_object(data, output)
+        # main process: [sample_preds, ...]
+        # other process: None
+        return output
+            

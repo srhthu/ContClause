@@ -28,20 +28,133 @@ fi
 
 tar -xzf contracts.tar.gz -C cuad_contracts
 ```
+# Pre-Process
+Before method-specific processing, the original dataset need be cleaned. We will also build some data that will be further used by various methods.
 
-# Pipeline for Generative Methods
-## Overview
-First, we pre-process the original dataset to [Link](#text-pre-process)
-- remove extra spaces and newlines
+## Clean and Format
+First, we pre-process the original dataset to
+- reduce many consecutive spaces and newlines to one
 - sort answer spans and merge overlapping spans.
 - convert to a concise structure
 
+**Code**: `data_process/pre_process.py`
+
+Arguments are path of original CUAD data and path of cleaned data.
+
+**Run**: 
+```
+python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.jsonl
+```
+
+**Output**: cleaned data with a concise structure in `data/cuad_clean/CUADv1.jsonl`
+
+```json
+{
+    "title": "the UID of the document",
+    "doc_text": "the contract document", # 123
+    "qas": [ 
+        # a list of question-answer information
+        {
+            "qa_id": "the UID of the document-question pair question",
+            "is_impossible":  "(`bool`) True if has answers",
+            "answers": [
+                # a list of answers
+                {
+                    "text": "answer text",
+                    "start_pos": "position of the start character",
+                    "end_pos": "position of the end character"
+                }
+            ]
+        }
+    ],
+    "new2old_map": "(List[int])  mapping from new to old doc character index"
+}
+```
+
+Note: the **qas** contains all clause types
+
+## Split Documents into Paragraphs
+Split documents into paragraphs and **relocate** the answers of each paragraph and only keep valid questions.
+
+**Code**: `data_process/split_para.py`
+
+Arguments are path of cleaned data and paragraph data
+
+**Run**
+```
+python -m cont_gen.data_process.split_para data/cuad_clean/CUADv1.jsonl data/cuad_clean/CUADv1_paras.jsonl
+```
+
+**Output**: paragraph data in `data/cuad_clean/CUADv1_paras.jsonl`.
+```json
+{
+    "title": "the UID of the document",
+    "paras": [
+        # a list of paragraph data
+        {
+            "text": "paragraph text",
+            "offset": "start index of the first character of the paragraph",
+            "qas": "same structure as cleaned data. ",
+                # remove is_impossible
+                # add q_id: clause type id
+        }
+    ]
+}
+```
+## Merge Short Paragraphs
+To avoid short paragraphs, we merge short paragraphs with its successors. Traverse each paragraph and merge if the character length is less than a threshold.
+  
+**Code**: `data_process/merge_short.py`  
+Arguments are path of input and output paragraph data and the *merge threshold*.
+
+**Run**
+```Bash
+python -m cont_gen.data_process.merge_short \
+data/cuad_clean/CUADv1_paras.jsonl \
+data/cuad_clean/CUADv1_paras_merge.jsonl \
+--threshold 300
+```
+
+**Output**: same format of paragraph data. `data/cuad_clean/CUADv1_paras_merge.jsonl`
+
+Note: the average number of paragraphs per doc change from **145.97** to **61.37**; the average length of paragraphs increase from **344.89** to **821.63**.
+
+## Split Paragraphs to Max Token Length
+Split paragraphs to make each one not exceed max number of tokens for a **tokenizer**.
+
+
+
+# Pipeline for Generative with Notes
+We include some notes as extra context, including:
+- Head of previous paragraphs
+- Summary of previous paragraphs' clause types.
+
+## Data Process
+### Split Paragraphs
+Split paragraphs to make each one not exceed max number of tokens for a **tokenizer**.
+
+### Training Prompt Data
+To get the source and target data, run the script `cont_gen/data_process/build_genqa_with_context.py`.
+
+The script will split paragraphs to make each one not exceed max number of tokens for a **tokenizer**. Then **source** and **target** strings are built. Some configurable variables are:
+- max_para_len: max munber of tokens of one paragraph
+- total_mem_len: max number of tokens in the memory
+- max_answer_len: max number of tokens in one piece of answer. The whole answer may contain many pieces. If the answer exceed the token limit, replace middle tokens with "..."
+- neg_ratio: the ratio of negative samples to positive samples
+
+Run the scripts:
+```Bash
+python -m cont_gen.data_process.build_genqa_with_context \
+
+```
+
+# Pipeline for Generative Methods
+## Overview
+
+
 Then, we split documents into paragraphs and relocate the answers of each paragraph. [Link](#split-paragraphs)
 
-Next, we **merge short paragraphs** with the next one. [Link](#merge-short-paragraphs)
-- short paragraphs can be chapter titles
-- If len(cur_p) < thresh 1 ; then merge it with the next paragraph
-- Repeat the process
+
 
 Before building feature, we prepare the questions for each clause. [Link](#question-prepare)
 
@@ -60,76 +173,10 @@ Train prompts: 16,723
 Test prompts: 229,518 (5598 chunks)
 
 ## Data  Process
-### Text Pre-process
-**Code**: `data_process/pre_process.py`
 
-**Run**: 
-```
-python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.jsonl
-```
-
-**Input**: original SQUAD data format
-
-**Output**:
-output to `data/cuad_clean/CUADv1.jsonl` in such format
-```json
-title: the UID of the document
-doc_text: the contract document
-qas: a list of question-answer information
-    qa_id: the UID of the document-question pair
-    question
-    is_impossible (`bool`): True if has answers
-    answers: a list of answers
-        text: answer text
-        start_pos: position of the start character
-        end_pos: position of the end character
-new2old_map: (List[int])
-```
-
-### Split paragraphs
-**Code**: `data_process/split_para.py`
-
-**Aim**:
-- Split by paragraph
-- Find QAs in this paragraph and relocate the answer position
-
-**Run**
-```
-python -m cont_gen.data_process.split_para data/cuad_clean/CUADv1.jsonl data/cuad_clean/CUADv1_paras.jsonl
-```
-**Input**
-`data/cuad_clean/CUADv1.jsonl`
-
-**Output**
-
-`data/cuad_clean/CUADv1_paras.jsonl`: A list of contract samples. Each sample contains several paragraphs.
-```
-title: the UID of the document
-paras: a list of paragraphs
-    text: paragraph text
-    offset: start index of the first character
-    qas: a list of **available** QA pairs
-        qa_id: UID of form {title}_{quest}_{span_id}
-        q_id: index of question.
-        answers: a list of answers
-            text: answer text
-            start_pos: position of the start character
-            end_pos: position of the end character
-```
 
 ### Merge short paragraphs
-**Code**: `data_process/merge_short.py`
 
-**Run**
-```Bash
-python -m cont_gen.data_process.merge_short data/cuad_clean/CUADv1_paras.jsonl data/cuad_clean/CUADv1_paras_merge.jsonl
-```
-
-**Input**: paragraph data, `data/cuad_clean/CUADv1_paras.jsonl`
-
-**Output**: same format with merged paragraph data. `data/cuad_clean/CUADv1_paras_merge.jsonl`
-
-Note: the average number of paragraphs change from **145.97** to **61.37**; the average length of paragraphs increase from **344.89** to **821.63**
 
 ### Question Prepare
 Prepare the questions for each clause. 
@@ -188,6 +235,12 @@ microsoft/phi-1_5 80 \
 ```
 
 **Output**: 
+```
+title
+chunk_index
+q_id
+prompt: for training, contain answer. for test, no answer.
+```
 
 ## Training
 training code: `cont_gen/train_genqa.py`
@@ -195,7 +248,36 @@ training code: `cont_gen/train_genqa.py`
 Run the script: 
 - `sh/genqa_phi15_ds.sh`: use deepspeed zero stage 1 to train the model
 
+### Compute loss only on outputs
+The training data should contain
+```
+input_ids: (batch_size, seq_len)
+attention_mask: (batch_size, seq_len)
+# source_len: (batch_size) length of the source part in prompt
+labels: (batch_size, seq_len) # with pad token label to be -100
+```
+
 ## Evaluating
+### Get Predictions
+```Bash
+CUDA_VISIBLE_DEVICES=0,1 accelerate launch \
+--num_processes 2 --main_process_port 9023 \
+-m cont_gen.infer_genqa \
+--prompt_path data/cuad_prompts/test_prompts_quest.jsonl \
+--base_model google/flan-t5-large \
+--save_path runs/genqa/flan-t5-large_quest_lr1e-4_bs16/preds_ckpt_25083.jsonl \
+--ckpt_dir runs/genqa/flan-t5-large_quest_lr1e-4_bs16/checkpoint-25083 \
+--dtype fp32 --batch_size 16
+```
+**Output**: each sample is a dict of
+```
+title, chunk_index, q_id, prediction
+```
+### Get metrics
+Macro F1 and IOU by token level overlapping:
+```Bash
+python -m cont_gen.evaluate.eval_genqa_result data/cuad_clean/CUADv1_chunks_merge.jsonl runs/genqa/flan-t5-large_quest_lr1e-4_bs16/preds_ckpt_8361.jsonl
+```
 
 # Pipeline for QA Span baseline
 ### Document Tokenization
@@ -293,7 +375,7 @@ Run
 python -m cont_gen.qa_pred --max_answer_length 256 --model_outputs runs/qa/roberta-base_lr1e-4_bs16/checkpoint-12000
 ```
 
-Output:
+**Output**: a dict from qid (title_clause) / example to prediction in a dict
 ```
     all_preds
     score_null
@@ -301,7 +383,12 @@ Output:
 ```
 
 ### Get metrics
-
+Run
+```Bash
+python -m cont_gen.evaluate.eval_qa_result data/cuad_clean/CUADv1_chunks_merge.jsonl \
+data/clause/ori_clause_names.json \
+runs/qa/roberta-base_lr1e-5_bs16/checkpoint-13000/predictions_ml256.pkl
+```
 
 ## Note
 answer spans can overlap.

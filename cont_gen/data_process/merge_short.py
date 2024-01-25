@@ -46,12 +46,6 @@ def merge_paragraphs_and_relocate(
             i += 1
     return para_list
 
-def process_all_data(samples):
-    """Process samples with paragraphs"""
-    for sample in samples:
-        sample['paras'] = merge_paragraphs_and_relocate(sample['paras'])
-    return samples
-
 if __name__ == '__main__':
     from pathlib import Path
     import json
@@ -61,13 +55,16 @@ if __name__ == '__main__':
 
     parser.add_argument('input_path', help = 'file of cleaned cuad data')
     parser.add_argument('output_path')
+    parser.add_argument('--threshold', type = int, default = 300)
     args = parser.parse_args()
 
     with open(args.input_path) as f:
         ori_data = [json.loads(k) for k in f]
     
     for sample in ori_data:
-        sample['paras'] = merge_paragraphs_and_relocate(sample['paras'])
+        sample['paras'] = merge_paragraphs_and_relocate(
+            sample['paras'], short_length = args.threshold
+        )
     
     out_p = Path(args.output_path)
     out_p.parent.mkdir(parents = True, exist_ok = True)

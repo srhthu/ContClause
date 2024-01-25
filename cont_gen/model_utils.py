@@ -1,6 +1,7 @@
 """Utilities for build, load and prepare model"""
 from typing import List, Tuple, Union
 
+import torch
 from transformers import (
     AutoTokenizer, AutoConfig, PreTrainedModel,
     AutoModelForCausalLM, AutoModelForSeq2SeqLM
@@ -12,6 +13,12 @@ from peft import  (
 )
 
 from cont_gen.trainer.utils_dist import DistLogger
+
+TORCH_DTYPE_MAP = {
+    'fp16': torch.float16, 
+    'bf16': torch.bfloat16, 
+    'fp32': torch.float32
+}
 
 def build_hf_or_peft_model(
     base_model, accelerator: Accelerator, torch_dtype, peft_config = None
@@ -42,6 +49,27 @@ def build_hf_or_peft_model(
         peft_config.task_type = task_type
         model = get_peft_model(model, config)
     
+    return model
+
+def load_hf_model_from_checkpoint(ckpt_dir, accelerator: Accelerator, torch_dtype: Union[str, torch.dtype]):
+    """
+    Load huggingface model from checkpoint saved by save_pretrained
+    """
+    torch_dtype = torch_dtype if isinstance(torch_dtype, torch.dtype) \
+                    else TORCH_DTYPE_MAP[torch_dtype]
+    config = AutoConfig.from_pretrained(ckpt_dir, trust_remote_code = True)
+    kws = dict(
+        torch_dtype = torch_dtype,
+        device_map = accelerator.local_process_index,
+        trust_remote_code = True
+    )
+    if 'phi' in ckpt_dir:
+        # use flash attention for microsoft/phi-1_5
+        kws.update(dict(flash_attn=True, flash_rotary=True, fused_dense=True))
+    if config.is_encoder_decoder:
+        model = AutoModelForSeq2SeqLM.from_pretrained(ckpt_dir, **kws)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(ckpt_dir, **kws)
     return model
 
 def smart_resize_embeddings(
