@@ -9,8 +9,8 @@ from transformers import AutoTokenizer
 from typing import List, Tuple, Dict, Optional, Any
 import random
 
-from cont_gen.data_process.utils import tokenize_wo_eos, ommit_middle, overlap_of_two_span
-from cont_gen.data_process.split_para_to_chunks import chunk_text
+from cont_gen.data_process.utils import tokenize_wo_eos, ommit_middle
+from cont_gen.utils import load_jsonl, load_json, save_jsonl
 
 
 def build_answer(answers: Optional[List[str]], tokenizer, max_len):
@@ -28,15 +28,16 @@ def build_inputs_with_both(
     total_memory_len: int,
     max_answer_len: int
 ):
-    source_template = 'Previous clauses:\n{memory}\nProvision:\n{provision}\n{quest}\nAnswer:\n'
+    source_template = 'Notes of previous paragraphs:\n{memory}\nProvision:\n{provision}\n{quest}\nAnswer:\n'
+
     # first, we prepare the memory of each paragraph
-    mem_tpl = 'Heading: {head}. This paragraph specifies the clauses: {cla_names}.\n'
+    mem_tpl = '<title>{head}</title> <clause>{cla_names}</clause>\n'
     memory_list = [mem_tpl.format(
         head = head, 
         cla_names = ', '.join(cla_names)
         ) for head, cla_names in zip(memory_head, memory_clauses)]
     # find the max number of memorys to fit into the window size
-    mem_lens = [len(tokenize_wo_eos(text).inpu_ids) for text in memory_list]
+    mem_lens = [len(tokenize_wo_eos(tokenizer, text).input_ids) for text in memory_list]
     mem_window = 0
     mem_acc_len = 0
     while mem_acc_len <= total_memory_len and mem_window < len(memory_list):
@@ -75,63 +76,10 @@ def get_memory_data(data, clause_names: List[str], num_head_tokens = 5):
     for para_data in data['paras']:
         para_data['mem_head'] = get_head(para_data['text'], num_tokens = num_head_tokens)
         para_data['mem_clauses'] = [clause_names[qa['q_id']] for qa in para_data['qas']]
-
-def filter_and_relocate_answer(answer, start, end, text):
-    """
-    Return answer in [start, end] or None if no overlapping.
-
-    Args:
-        answer: contain the position in paragraph text
-        start, end: position of current span
-        text: paragraph text
-    """
-    ol_pos = overlap_of_two_span((start, end), (answer['start_pos'], answer['end_pos']))
-    if ol_pos is None:
-        return None
-    return {
-        'text': text[ol_pos[0]: ol_pos[1] + 1],
-        'start_pos': ol_pos[0] - start,
-        'end_pos': ol_pos[1] - start
-    }
-
-def split_para_to_chunk_para(cont_data, tokenizer, max_para_len: int):
-    """
-    Split paragraphs into chunk_paragraph to fit in the context size
-    """
-    new_paras = []
-    for para in cont_data['paras']:
-        chunk_pos = chunk_text(para['text'], tokenizer, max_len = max_para_len)
-        for start, end in chunk_pos:
-            # prepare the new paragraph
-            new_p = {
-                'text': para['text'][start: end + 1],
-                'offset': para['offset'] + start,
-                'qas': []
-            }
-            for qa in para['qas']:
-                # find answers in current span. None if not in
-                new_answers = [
-                    filter_and_relocate_answer(answer, start, end, new_p['text']) for answer in qa['answers']]
-                new_answers = list(filter(lambda k: k is not None, new_answers))
-                if len(new_answers) == 0:
-                    continue
-                # build new qa data
-                new_qa = {
-                    'qa_id': qa['qa_id'],
-                    'q_id': qa['q_id'],
-                    'answers': new_answers
-                }
-                new_p['qas'].append(new_qa)
-            new_paras.append(new_p)
-    return {
-        'title': cont_data['title'],
-        'paras': new_paras
-    }
-
     
 def build_train_data(
-    all_cont_data, tokenizer, max_para_len, quests,
-    total_mem_len, max_answer_len,
+    all_cont_data, tokenizer, clause_names, quests,
+    max_mem_num, total_mem_len, max_answer_len,
     ratio = 1.0,
 ):
     """
@@ -140,16 +88,13 @@ def build_train_data(
     Sample strategy: for each clause type, determin num_neg as num_pos * ratio,
     then sample contract and paragraphs to meet this number
     """
-    print(f'Truncate paragraphs to no more than length of {max_para_len}')
-    all_cont_data = [
-        split_para_to_chunk_para(k, tokenizer, max_para_len) for k in all_cont_data]
-    
     # Sample negative samples
     ## First, count num_pos for each clause type
     count_cla = Counter()
     for cont_data in all_cont_data:
         for para in cont_data['paras']:
             count_cla.update([qa['q_id'] for qa in para['qas']])
+    print(f'Clause sample count: {count_cla}')
     
     ## get negtive samples in the form (title, para_idx, q_id)
     all_neg_samples = []
@@ -160,36 +105,54 @@ def build_train_data(
             cont_idx = random.choice(range(len(all_cont_data)))
             cont_data = all_cont_data[cont_idx]
             para_idx = random.choice(range(len(cont_data['paras'])))
+            
             # make sure the paragraph does not contain the clause
             if q_id in [qa['q_id'] for qa in cont_data['paras'][para_idx]['qas']]:
                 continue
+            
+            # do not sample negative samples twice
             neg_sample = (cont_data['title'], para_idx, q_id)
             if neg_sample in cla_neg:
                 continue
             cla_neg.append(neg_sample)
-        all_neg_samples.append(cla_neg)
+        all_neg_samples.extend(cla_neg)
 
     # Prepare memory data for each paragraph
     for cont_data in all_cont_data:
-        get_memory_data(cont_data)
+        get_memory_data(cont_data, clause_names)
+
+    title2paras = {d['title']: d['paras'] for d in all_cont_data}
 
     # get pos train samples in the same form
     all_pos_samples = []
     for title, paras in title2paras.items():
-        for pi, para in enumerate(paras['paras']):
+        for pi, para in enumerate(paras):
             for qa in para['qas']:
                 all_pos_samples.append((title, pi, qa['q_id']))
-
-    ## Prepare prompts
-    title2paras = {d['title']: d['paras'] for d in all_cont_data}
     
-    for title, para_idx, q_id in all_pos_samples + all_neg_samples:
-        build_prompt_data(
+    total_samples = all_pos_samples + all_neg_samples
+    print(
+        f'pos samples: {len(all_pos_samples)}  '
+        f'neg samples: {len(all_neg_samples)}'
+    )
+    # exit()
+    ## Prepare prompts
+    prompt_data = []
+    for title, para_idx, q_id in tqdm(total_samples, ncols = 80):
+        source, target = build_prompt_data(
             title2paras, title, para_idx, q_id, quests[q_id], 
             tokenizer,
-            max_mem_num = 10, total_mem_len = total_mem_len,
+            max_mem_num = max_mem_num, total_mem_len = total_mem_len,
             max_answer_len = max_answer_len                  
         )
+        prompt_data.append({
+            'title': title,
+            'para_idx': para_idx,
+            'q_id': q_id,
+            'source': source,
+            'target': target
+        })
+    return prompt_data
 
 def build_oracle_test_data(
     all_cont_data, tokenizer, max_para_len, quests,
@@ -234,5 +197,32 @@ if __name__ == '__main__':
     from pathlib import Path
     import json
     import argparse
+    from transformers import AutoTokenizer
     
     parser = argparse.ArgumentParser()
+    parser.add_argument('input_path', help = 'file of paragraph data')
+    parser.add_argument('output_path', help = 'data with source and target strings')
+    parser.add_argument('tokenizer')
+    parser.add_argument('quests', help = 'path of clause questions')
+    parser.add_argument('--max_mem_num', type = int, default = 10)
+    parser.add_argument('--total_mem_len', type = int, default = 256)
+    parser.add_argument('--max_answer_len', type = int, default = 60)
+    parser.add_argument('--neg_ratio', type = float, default = 1.0)
+    args = parser.parse_args()
+
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code = True)
+
+    cont_data = load_jsonl(args.input_path)
+    quests = load_json(args.quests)
+    clause_names = load_json('data/clause/ori_clause_names.json')
+
+    save_data = build_train_data(
+        cont_data, tokenizer, clause_names, quests, 
+        max_mem_num = args.max_mem_num,
+        total_mem_len = args.total_mem_len,
+        max_answer_len = args.max_answer_len,
+        ratio = args.neg_ratio
+    )
+
+    Path(args.output_path).parent.mkdir(parents = True, exist_ok = True)
+    save_jsonl(save_data, args.output_path)

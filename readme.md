@@ -52,18 +52,14 @@ python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cua
 {
     "title": "the UID of the document",
     "doc_text": "the contract document", # 123
-    "qas": [ 
-        # a list of question-answer information
+    "qas": [ # a list of question-answer information
         {
             "qa_id": "the UID of the document-question pair question",
             "is_impossible":  "(`bool`) True if has answers",
             "answers": [
                 # a list of answers
-                {
-                    "text": "answer text",
-                    "start_pos": "position of the start character",
-                    "end_pos": "position of the end character"
-                }
+                { "text": "answer text",
+                  "start_pos/end_pos": "position of the start/end character"}
             ]
         }
     ],
@@ -76,13 +72,15 @@ Note: the **qas** contains all clause types
 ## Split Documents into Paragraphs
 Split documents into paragraphs and **relocate** the answers of each paragraph and only keep valid questions.
 
-**Code**: `data_process/split_para.py`
+**Code**: `data_process/split_doc_to_para.py`
 
 Arguments are path of cleaned data and paragraph data
 
 **Run**
-```
-python -m cont_gen.data_process.split_para data/cuad_clean/CUADv1.jsonl data/cuad_clean/CUADv1_paras.jsonl
+```Bash
+python -m cont_gen.data_process.split_doc_to_para \
+data/cuad_clean/CUADv1.jsonl \
+data/cuad_clean/CUADv1_paras.jsonl
 ```
 
 **Output**: paragraph data in `data/cuad_clean/CUADv1_paras.jsonl`.
@@ -122,6 +120,11 @@ Note: the average number of paragraphs per doc change from **145.97** to **61.37
 ## Split Paragraphs to Max Token Length
 Split paragraphs to make each one not exceed max number of tokens for a **tokenizer**.
 
+**Code**: `data_process/split_para_max_token.py`
+
+Arguments: input_path, output_path, tokenizer, max_para_len
+
+**Output** to `data/cuad_clean/{tokenizer_name}_{max_para_len}/CUAD_paras.jsonl`
 
 
 # Pipeline for Generative with Notes
@@ -130,31 +133,45 @@ We include some notes as extra context, including:
 - Summary of previous paragraphs' clause types.
 
 ## Data Process
-### Split Paragraphs
-Split paragraphs to make each one not exceed max number of tokens for a **tokenizer**.
 
 ### Training Prompt Data
-To get the source and target data, run the script `cont_gen/data_process/build_genqa_with_context.py`.
+To get the source and target data for fine-tuning, run the script `cont_gen/data_process/build_genqa_with_context.py`. The input data is supposed to be paragraph data that has been partitioned to fit max token length.
 
-The script will split paragraphs to make each one not exceed max number of tokens for a **tokenizer**. Then **source** and **target** strings are built. Some configurable variables are:
-- max_para_len: max munber of tokens of one paragraph
-- total_mem_len: max number of tokens in the memory
-- max_answer_len: max number of tokens in one piece of answer. The whole answer may contain many pieces. If the answer exceed the token limit, replace middle tokens with "..."
-- neg_ratio: the ratio of negative samples to positive samples
+Some configurable variables are:
+- **max_mem_num**: max number of memory paragraphs
+- **total_mem_len**: max number of tokens in the memory
+- **max_answer_len**: max number of tokens in one piece of answer. The whole answer may contain many pieces. If the answer exceed the token limit, replace middle tokens with "..."
+- **neg_ratio**: the ratio of negative samples to positive samples
 
 Run the scripts:
 ```Bash
 python -m cont_gen.data_process.build_genqa_with_context \
+data/cuad_clean/flan-t5_512/CUAD_paras.jsonl \
+data/cuad_clean/flan-t5_512/oracle_memory_genqa_quest.jsonl \
+google/flan-t5-large \
+data/clause/prompt_quest.json \
+--max_mem_num 10 --total_mem_len 256 --max_answer_len 60 --neg_ratio 1.0
+```
 
+Output: 10330 positive 10330 negtive samples for train and oracle test.  
+Statistics of max length: 900
+
+## Inference
+For each document, infer paragraphs one by one as previous clause information is need. (`cont_gen.infer_mem_genqa.py`)
+
+**Run**
+```Bash
+python -m cont_gen.infer_mem_genqa \
+--test_path data/cuad_clean/flan-t5_512/test_paras.jsonl \
+--base_model google/flan-t5-large \
+--model_ckpt runs/mem_genqa/flan-t5-large_quest_lr1e-4_bs16/checkpoint-12492 \
+--save_path runs/mem_genqa/flan-t5-large_quest_lr1e-4_bs16/preds_ckpt_12492.jsonl \
+--quests data/clause/prompt_quest.json \
+--dtype fp32 --batch_size 6
 ```
 
 # Pipeline for Generative Methods
 ## Overview
-
-
-Then, we split documents into paragraphs and relocate the answers of each paragraph. [Link](#split-paragraphs)
-
-
 
 Before building feature, we prepare the questions for each clause. [Link](#question-prepare)
 
@@ -173,10 +190,6 @@ Train prompts: 16,723
 Test prompts: 229,518 (5598 chunks)
 
 ## Data  Process
-
-
-### Merge short paragraphs
-
 
 ### Question Prepare
 Prepare the questions for each clause. 

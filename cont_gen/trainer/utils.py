@@ -99,6 +99,16 @@ def nested_to_cpu(tensors):
         t = t.to(torch.float32)
     return t
 
+def convert_column_to_row(batch_results):
+    """Convert data grouped by column to row samples."""
+    if isinstance(batch_results, Mapping):
+        keys = list(batch_results.keys())
+        sample_results = list(zip(*batch_results.values()))
+        return [dict(zip(keys, r)) for r in sample_results]
+
+    elif isinstance(batch_results, (list, tuple)):
+        return list(zip(*batch_results))
+
 def compute_clm_loss_with_ignore(model, batch, ignore_index):
     # out = model(**batch)
     out = model(input_ids = batch['input_ids'])

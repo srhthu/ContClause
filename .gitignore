@@ -5,3 +5,4 @@ outputs/
 data
 runs/
 log.txt
+cache/

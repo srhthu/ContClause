@@ -21,10 +21,15 @@ TORCH_DTYPE_MAP = {
 }
 
 def build_hf_or_peft_model(
-    base_model, accelerator: Accelerator, torch_dtype, peft_config = None
+    base_model, 
+    accelerator: Accelerator, 
+    torch_dtype: Union[torch.dtype, str], 
+    peft_config = None
 ):
     # prepare arguments for from_pretrained
     config = AutoConfig.from_pretrained(base_model, trust_remote_code = True)
+    torch_dtype = torch_dtype if isinstance(torch_dtype, torch.dtype) \
+                    else TORCH_DTYPE_MAP[torch_dtype]
     kws = dict(
         torch_dtype = torch_dtype,
         device_map = accelerator.local_process_index,

@@ -47,9 +47,9 @@ def reverse_char_map(char_map, tot_len = None):
             i += 1
     return r_char_map
 
-def tokenize_wo_eos(tokenizer: PreTrainedTokenizer, text):
+def tokenize_wo_eos(tokenizer: PreTrainedTokenizer, text, **kws):
     """tokenize the text without add eos_token"""
-    enc = tokenizer(text)
+    enc = tokenizer(text, **kws)
     if (
         "eos_token" in tokenizer.special_tokens_map
         and enc.input_ids[-1] == tokenizer.eos_token_id
@@ -67,6 +67,38 @@ def ommit_middle(text, tokenizer, max_len):
         head_end = enc.token_to_chars(max_len // 2 - 1).end
         tail_start = enc.token_to_chars(len(enc['input_ids']) - max_len // 2).start
         return text[:head_end] + ' ... ' + text[tail_start:]
+
+def chunk_text(text, tokenizer, max_len):
+    """
+    Cut text into chunks of max token length of max_len.
+
+    Return the chunk start and end positions
+    """
+    enc = tokenizer(text)
+
+    chunk_pos: List[Tuple[int, int]] = [] # end pos is included
+    span_char_start = 0
+    span_token_start = enc.char_to_token(span_char_start)
+    i = 0
+    # traverse each character
+    while i < len(text):
+        if enc.char_to_token(i) is None:
+            i += 1
+            continue
+        if enc.char_to_token(i) - span_token_start >= max_len:
+            # this char just overflow the max_len
+            # add previous chars to span
+            chunk_pos.append((span_char_start, i - 1))
+            # start a new span
+            span_char_start = i
+            span_token_start = enc.char_to_token(i)
+        # go to next char
+        i += 1
+    
+    # add the final span
+    chunk_pos.append((span_char_start, len(text) - 1))
+
+    return chunk_pos
 
 # Functions related to remove some spans from a string
 def cut_spans_return_offset(ori_text: str, span_pos: List[Tuple[int, int]]):
