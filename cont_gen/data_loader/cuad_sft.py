@@ -96,8 +96,12 @@ class CUAD_SFT_Cached(Dataset):
 
         src_tk_args = {} if self.max_length is None \
                     else {'truncation': True, 'max_length': self.max_length}
-        src_enc = tokenize_wo_eos(tokenizer, prompt_data['source'],
-                                   **src_tk_args)
+        if self.is_seq2seq:
+            # do not remove eos token
+            src_enc = tokenizer(prompt_data['source'], **src_tk_args)
+        else:
+            src_enc = tokenize_wo_eos(tokenizer, prompt_data['source'],
+                                      **src_tk_args)
 
         tgt_tk_args = {} if self.max_target_length is None \
                     else {'truncation': True, 'max_length': self.max_target_length}

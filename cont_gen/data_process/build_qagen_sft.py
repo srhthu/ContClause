@@ -5,7 +5,8 @@ from collections import Counter, OrderedDict
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from cont_gen.data_process.utils import rand_choice
+from cont_gen.data_process.utils import rand_choice, ommit_middle
+from cont_gen.utils import load_json, load_jsonl
 
 Template = 'Provision:\n{provision}\n{quest}\nAnswer:\n{answers}'
 
@@ -85,8 +86,9 @@ def build_one_sample_training(chunks, quest_list, template, tokenizer, ommit_len
     return all_prompts
 
 def build_training_prompt_data(
-    titles, chunks, quest_list, template, 
-    tokenizer, ommit_len
+    all_cont_data, tokenizer, quests, 
+    template, 
+    max_answer_len, ratio = 1.0
 ):
     """Collect prompts of contracts with titles"""
     # group by title
@@ -142,34 +144,35 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('input_path', help = 'file of chunk data')
+    parser.add_argument('input_path', help = 'file of paragraph data')
     parser.add_argument('output_path')
     parser.add_argument('tokenizer_name')
     parser.add_argument('ommit_len', type = int)
     parser.add_argument('--quest', help = 'file of all questions')
-    parser.add_argument('--train_split')
-    parser.add_argument('--test_split')
+    parser.add_argument('--split_titles', 
+                        help = 'path of a json file containing titles of the split')
+    parser.add_argument('--test', action = 'store_true', 
+                        help = 'True to build test data without sampling')
     args = parser.parse_args()
-
-    with open(args.input_path) as f:
-        all_chunk_data = [json.loads(k) for k in f]
     
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, trust_remote_code = True)
 
-    with open(args.quest) as f:
-        quest_list = json.load(f)
+    cont_data = load_jsonl(args.input_path)
+    quests = load_json(args.quests)
+    titles = set(load_json(args.split_titles))
 
-    if args.train_split:
-        train_ori_data = json.load(open(args.train_split))
-        titles = [k['title'] for k in train_ori_data['data']]
+    # Filter train or test data
+    cont_data = list(filter(lambda k: k['title'] in titles, cont_data))
+
+    if not args.test:
         prompts = build_training_prompt_data(
-            titles, all_chunk_data, quest_list, Template, tokenizer, args.ommit_len
+            titles, all_chunk_data, quests, Template, tokenizer, args.ommit_len
         )
     elif args.test_split:
         test_ori_data = json.load(open(args.test_split))
         titles = [k['title'] for k in test_ori_data['data']]
         prompts = build_test_prompt_data(
-            titles, all_chunk_data, quest_list, Template, tokenizer, args.ommit_len
+            titles, all_chunk_data, quests, Template, tokenizer, args.ommit_len
         )
     else:
         exit()

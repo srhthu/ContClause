@@ -1,5 +1,11 @@
 import json
 import pickle
+from pathlib import Path
+from typing import List
+
+def make_parent_dir(path):
+    """Make the parent dir of path"""
+    Path(path).parent.mkdir(parents = True, exist_ok=True)
 
 def load_jsonl(path):
     with open(path) as f:
@@ -11,7 +17,9 @@ def load_json(path):
         data = json.load(f)
     return data
 
-def save_jsonl(data, path):
+def save_jsonl(data: List, path):
+    """Save each element of data to path as json string. Create parent dir if not exist"""
+    make_parent_dir(path)
     with open(path, 'w') as f:
         for d in data:
             f.write(json.dumps(d, ensure_ascii=False) + '\n')
@@ -28,5 +36,6 @@ def load_pickle(path):
     return data
 
 def save_pickle(data, path):
+    make_parent_dir(path)
     with open(path, 'wb') as f:
         pickle.dump(data, f)

@@ -147,9 +147,10 @@ Run the scripts:
 ```Bash
 python -m cont_gen.data_process.build_genqa_with_context \
 data/cuad_clean/flan-t5_512/CUAD_paras.jsonl \
-data/cuad_clean/flan-t5_512/oracle_memory_genqa_quest.jsonl \
+data/cuad_clean/flan-t5_512/memory_genqa_quest_train.jsonl \
 google/flan-t5-large \
 data/clause/prompt_quest.json \
+--split_titles data/cuad_split/ori_train_titles.json \
 --max_mem_num 10 --total_mem_len 256 --max_answer_len 60 --neg_ratio 1.0
 ```
 

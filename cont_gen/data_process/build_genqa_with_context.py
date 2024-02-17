@@ -97,6 +97,9 @@ def build_train_data(
     print(f'Clause sample count: {count_cla}')
     
     ## get negtive samples in the form (title, para_idx, q_id)
+    # For each negtive sample, we first choose a random title, 
+    # then choose a random paragraph, 
+    # discard if it is positive or already added
     all_neg_samples = []
     for q_id, num_pos in count_cla.items():
         cla_neg = []
@@ -204,6 +207,10 @@ if __name__ == '__main__':
     parser.add_argument('output_path', help = 'data with source and target strings')
     parser.add_argument('tokenizer')
     parser.add_argument('quests', help = 'path of clause questions')
+    parser.add_argument('--split_titles', 
+                        help = 'path of a json file containing train or test titles')
+    parser.add_argument('--test', action = 'store_true',
+                        help = 'build test or train data.')
     parser.add_argument('--max_mem_num', type = int, default = 10)
     parser.add_argument('--total_mem_len', type = int, default = 256)
     parser.add_argument('--max_answer_len', type = int, default = 60)
@@ -215,14 +222,20 @@ if __name__ == '__main__':
     cont_data = load_jsonl(args.input_path)
     quests = load_json(args.quests)
     clause_names = load_json('data/clause/ori_clause_names.json')
+    titles = set(load_json(args.split_titles))
+    
+    # Filter train or test data
+    cont_data = list(filter(lambda k: k['title'] in titles, cont_data))
 
-    save_data = build_train_data(
-        cont_data, tokenizer, clause_names, quests, 
-        max_mem_num = args.max_mem_num,
-        total_mem_len = args.total_mem_len,
-        max_answer_len = args.max_answer_len,
-        ratio = args.neg_ratio
-    )
+    if not args.test:
+        save_data = build_train_data(
+            cont_data, tokenizer, clause_names, quests, 
+            max_mem_num = args.max_mem_num,
+            total_mem_len = args.total_mem_len,
+            max_answer_len = args.max_answer_len,
+            ratio = args.neg_ratio
+        )
+    else:
+        save_data = build_oracle_test_data()
 
-    Path(args.output_path).parent.mkdir(parents = True, exist_ok = True)
     save_jsonl(save_data, args.output_path)
