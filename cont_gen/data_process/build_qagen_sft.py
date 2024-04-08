@@ -1,5 +1,7 @@
 """
-Build supervised fine-tuning data for Generative QA
+Build supervised fine-tuning data for Generative QA.
+
+Modified old version. Unfinished. Go to build_genqa_new.py for latest version.
 """
 from collections import Counter, OrderedDict
 from tqdm import tqdm
@@ -90,7 +92,9 @@ def build_training_prompt_data(
     template, 
     max_answer_len, ratio = 1.0
 ):
-    """Collect prompts of contracts with titles"""
+    """
+    Collect prompts of contracts with titles
+    """
     # group by title
     tit2chunks = {t: [] for t in titles}
     for ck in chunks:

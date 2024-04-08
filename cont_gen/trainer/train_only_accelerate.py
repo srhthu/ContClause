@@ -322,7 +322,9 @@ class Predictor:
         self.collate_fn = collate_fn if collate_fn else default_data_collator
     
     def predict(self, model, dataset):
-        """Return predic results of each sample"""
+        """
+        Return predic results of each sample. Support DDP.
+        """
         accelerator = self.accelerator
         # get dataloader
         dataloader = DataLoader(

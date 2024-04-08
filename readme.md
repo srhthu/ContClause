@@ -126,6 +126,7 @@ Arguments: input_path, output_path, tokenizer, max_para_len
 
 **Output** to `data/cuad_clean/{tokenizer_name}_{max_para_len}/CUAD_paras.jsonl`
 
+**Statistics**: there are total (train + test) 33743 paragraphs, only 6531 (19.36\%) paragraphs contain pre-defined clauses. 
 
 # Pipeline for Generative with Notes
 We include some notes as extra context, including:
@@ -190,7 +191,19 @@ There are 510 contracts, 6702 available clauses annotated. Among them, 2594 clau
 Train prompts: 16,723
 Test prompts: 229,518 (5598 chunks)
 
-## Data  Process
+## Data Process (New)
+```Bash
+python -m cont_gen.data_process.build_qagen_new \
+data/cuad_clean/flan-t5_512/CUAD_paras.jsonl \
+data/cuad_clean/flan-t5_512/genqa/quest_train_max-asw-len_80.jsonl \
+google/flan-t5-large \
+--ommit_len 80 \
+--quests data/clause/prompt_quest.json \
+--split_titles data/cuad_split/ori_train_titles.json
+```
+Output: dict of **title, para_idx, q_id, source, target**
+
+## ~~Data  Process~~
 
 ### Question Prepare
 Prepare the questions for each clause. 

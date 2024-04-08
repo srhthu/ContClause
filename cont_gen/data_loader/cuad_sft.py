@@ -34,6 +34,7 @@ class CUAD_SFT_Cached(Dataset):
         small: True for debug mode with few samples
     """
     version = "1.0"
+    SMALL_NUM = 200
     def __init__(
         self, path, tokenizer: PreTrainedTokenizer,
         is_seq2seq: bool,
@@ -69,7 +70,8 @@ class CUAD_SFT_Cached(Dataset):
             print(f'Load from cache: {cache_path}')
             self.samples = load_pickle(cache_path)
         else:
-            self.samples = [self.process(k) for k in tqdm(self.data, ncols = 80)]
+            data_to_process = self.data if not self.small else self.data[:self.SMALL_NUM]
+            self.samples = [self.process(k) for k in tqdm(data_to_process, ncols = 80)]
             print(f'Write to cache: {cache_path}')
             cache_path.parent.mkdir(parents = True, exist_ok = True)
             save_pickle(self.samples, cache_path)

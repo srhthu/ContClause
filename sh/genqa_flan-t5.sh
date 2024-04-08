@@ -7,7 +7,7 @@ lr=1e-4
 
 CUDA_VISIBLE_DEVICES=2,3 accelerate launch \
 --num_processes 2 --main_process_port 8991 -m cont_gen.train_genqa \
---output_dir runs/genqa/flan-t5-${model_size}_${data_suffix}_lr${lr}_bs16 \
+--output_dir runs/genqa/flan-t5-${model_size}_${data_suffix}_lr${lr}_bs16_re1 \
 `#--ds_config ds_config/zero1_bf16.json` \
 --data_path $data_path \
 --max_length 512 \
