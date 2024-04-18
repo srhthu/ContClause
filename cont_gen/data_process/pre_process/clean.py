@@ -1,3 +1,9 @@
+"""
+First, we pre-process the original dataset to
+- reduce many consecutive spaces and newlines to one
+- sort answer spans and merge overlapping spans.
+- convert to a concise structure
+"""
 import re
 from tqdm import tqdm
 from multiprocessing import Pool

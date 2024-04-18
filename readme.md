@@ -37,13 +37,13 @@ First, we pre-process the original dataset to
 - sort answer spans and merge overlapping spans.
 - convert to a concise structure
 
-**Code**: `data_process/pre_process.py`
+**Code**: `data_process/pre_process/clean.py`
 
 Arguments are path of original CUAD data and path of cleaned data.
 
 **Run**: 
 ```
-python -m cont_gen.data_process.pre_process data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.jsonl
+python -m cont_gen.data_process.pre_process.clean data/cuad_split/CUADv1.json data/cuad_clean/CUADv1.jsonl
 ```
 
 **Output**: cleaned data with a concise structure in `data/cuad_clean/CUADv1.jsonl`

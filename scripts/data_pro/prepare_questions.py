@@ -2,6 +2,7 @@
 # %%
 import json
 import re
+import pandas as pd
 from transformers import AutoTokenizer
 # %%
 with open('../../data/cuad_clean/CUADv1.jsonl') as f:
@@ -27,6 +28,17 @@ for cinfo, n2 in zip(cla_info, detail_ext):
     if cinfo['desc'] != n2:
         print((cinfo['desc'],n2))
 # There are a few mismatched clause information...
+# %%
+# Save the clause type and question in csv.
+cla_df = pd.DataFrame({
+    "clause_type": cat_extracted,
+    "clause_quest": detail_ext,
+    "readme_clause_type": [k['category'] for k in cla_info],
+    "readme_group": [k['group'] for k in cla_info],
+    "readme_aws_format": [k['answer_format'] for k in cla_info]
+})
+# %%
+cla_df.to_csv('../../data/clause/all_info.csv', index = False)
 # %%
 # Prompt Template
 tplt_quest = 'Question: Is there any part related to (clause) "{name}"?'
