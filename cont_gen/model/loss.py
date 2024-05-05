@@ -21,3 +21,17 @@ def compute_clm_loss_with_ignore(model, batch, ignore_index):
 
     return loss
 
+
+class LM_Loss_With_Ignore:
+    def __init__(self, ignore_index):
+        self.ignore_index = ignore_index
+    
+    def __call__(self, model, batch):
+        loss = compute_clm_loss_with_ignore(model, batch, self.ignore_index)
+        return {'loss': loss}
+
+class LM_Simple_Feed:
+    def __call__(self, model, batch):
+        batch = {k:v for k,v in batch.items() if k in ['input_ids', 'attention_mask', 'labels']}
+        loss = model(**batch).loss
+        return {'loss': loss}

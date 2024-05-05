@@ -91,6 +91,7 @@ class DistLogger:
         self.tqdm_bar = None
     
     def log(self, msg, main_only = True):
+        """Log only to main process if main_only else to all processes"""
         if main_only and self.state.is_main_process:
             # log at main process
             self._log(msg, '[Main]')

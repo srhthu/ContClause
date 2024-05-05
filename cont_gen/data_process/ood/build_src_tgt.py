@@ -21,6 +21,11 @@ class Cutter:
     
     def __call__(self, text) -> str:
         return cut_to_max_length(text, self.tokenizer, self.max_len)
+    
+class NoCutter:
+    """Do not cut"""
+    def __call__(self, text) -> str:
+        return text
 
 class SFT_Builder:
     """Build the source and target text for SFT."""
@@ -39,11 +44,11 @@ class SFT_Builder:
 
         clause_text = self.cut_func(clause_text) # cut to max length
 
-        source = SFT_Builder.build_prompt_src(self.prompt, 
+        source = self.build_prompt_src(self.prompt, 
                                               clause_text, 
                                               cinfo['clause_type'], 
                                               cinfo['clause_quest'])
-        target = SFT_Builder.build_prompt_tgt(meta_data['answers'])
+        target = self.build_prompt_tgt(meta_data['answers'])
 
         return source, target
     
@@ -58,6 +63,26 @@ class SFT_Builder:
         else:
             return 'No'
 
+class SFT_Builder_YesNo(SFT_Builder):
+    @staticmethod
+    def build_prompt_tgt(answers):
+        if len(answers) > 0:
+            tgt = '\n'.join(['- ' + a for a in answers])
+            tgt = 'Yes. ' + tgt
+            return tgt
+        else:
+            return 'No.'
+
+class SFT_Builder_YesNo_Natural(SFT_Builder):
+    @staticmethod
+    def build_prompt_tgt(answers):
+        if len(answers) > 0:
+            tgt = '\n'.join(['- ' + a for a in answers])
+            tgt = 'There are such clauses. They are:\n' + tgt
+            return tgt
+        else:
+            return 'There is no such clause.'
+
 def process(builder:SFT_Builder, meta_df:pd.DataFrame):
     all_data = []
     for _, row in tqdm(list(meta_df.iterrows())):
@@ -70,8 +95,9 @@ def process(builder:SFT_Builder, meta_df:pd.DataFrame):
             'source': source,
             'target': target
         }
+        # Here, we use 'type' to indicate different data split.
         if 'small' in row:
-            pro_data['small'] = row['small']
+            pro_data['type'] = row['small']
         if 'type' in row:
             pro_data['type'] = row['type']
         all_data.append(pro_data)
@@ -84,6 +110,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('split_dir', help = 'dir that holds train and test meta data')
+    parser.add_argument('--type', default = 'basic', help = 'basic, yes_no, yes_no_natural')
     parser.add_argument('--prompt', help = 'prompt path')
     parser.add_argument('--save_dir', help = 'path to save source and target data.')
     parser.add_argument('--tokenizer', default='meta-llama/Meta-Llama-3-8B')
@@ -97,7 +124,7 @@ def main():
         save_dir = split_dir / Path(args.prompt).stem
         print(f'Save to {str(save_dir)}')
     else:
-        save_dir = args.save_dir
+        save_dir = Path(args.save_dir)
     
     prompt = open(args.prompt, 'r').read()
     print(f'Prompt:\n{prompt}')
@@ -108,7 +135,14 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     cutter = Cutter(tokenizer, args.max_len)
 
-    builder = SFT_Builder(prompt, clause_info, all_para_data, cutter)
+    if args.type == 'basic':
+        builder_cls = SFT_Builder
+    elif args.type == 'yes_no':
+        builder_cls = SFT_Builder_YesNo
+    elif args.type == 'yes_no_natural':
+        builder_cls = SFT_Builder_YesNo_Natural
+
+    builder = builder_cls(prompt, clause_info, all_para_data, cutter)
 
     train_meta = pd.read_csv(str(split_dir / 'train_meta.csv'), converters={'answers': literal_eval})
     train_data  = process(builder, train_meta)

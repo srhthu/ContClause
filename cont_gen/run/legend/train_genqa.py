@@ -37,15 +37,27 @@ import torch.distributed as dist
 
 from cont_gen.trainer.utils_dist import initialize_accelerator, DistLogger
 from cont_gen.data_loader.cuad_prompt import CUAD_SFT, SFT_Padding, CUAD_SFT_Seq2Seq
-from cont_gen.data_loader.cuad_sft import CUAD_SFT_Cached
-from cont_gen.model_utils import build_hf_or_peft_model, smart_resize_embeddings
+from cont_gen.utils.model_utils import build_hf_or_peft_model, smart_resize_embeddings
 from cont_gen.trainer.utils import get_smart_optimizer, compute_clm_loss_with_ignore
 from cont_gen.trainer.train_only_accelerate import Trainer_Basic, TrainingArgs_Basic
 
+TORCH_DTYPE_MAP = {
+    'fp16': torch.float16, 
+    'bf16': torch.bfloat16, 
+    'fp32': torch.float32
+}
+
+class LM_Loss_With_Ignore:
+    def __init__(self, ignore_index):
+        self.ignore_index = ignore_index
+    
+    def __call__(self, model, batch):
+        loss = compute_clm_loss_with_ignore(model, batch, self.ignore_index)
+        return {'loss': loss}
+
 class LM_Feed:
     def __call__(self, model, batch):
-        batch = {k:v for k,v in batch.items() 
-                 if k in ['input_ids', 'attention_mask', 'labels']}
+        batch = {k:v for k,v in batch.items() if k in ['input_ids', 'attention_mask', 'labels']}
         loss = model(**batch).loss
         return {'loss': loss}
 
@@ -56,8 +68,7 @@ def get_parser():
     parser.add_argument('--debug', action = 'store_true')
     # data args
     parser.add_argument('--data_path', help = 'prompt file path')
-    parser.add_argument('--max_length', type = int, default = 1000)
-    parser.add_argument('--max_target_length', type = int, default = 512)
+    parser.add_argument('--max_length', type = int, default = 1200)
     # model args
     parser.add_argument('--base_model')
     parser.add_argument('--saved_model', help = 'path of saved model state dict',
@@ -126,15 +137,11 @@ def main():
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
     # Load dataset
-    is_seq2seq =  ('t5' in args.base_model)
-    dataset = CUAD_SFT_Cached(
+    ds_cls = CUAD_SFT if 't5' not in args.base_model else CUAD_SFT_Seq2Seq
+    dataset = ds_cls(
         args.data_path, tokenizer = tokenizer, 
-        is_seq2seq=is_seq2seq,
-        cache_dir = './cache',
-        max_length = args.max_length,
-        max_target_length = args.max_target_length,
+        max_length = args.max_length, 
         labels_on_full = args.labels_on_full,
-        is_test = False,
         small = args.debug
     )
     logger.log(f'dataset: {dataset.__class__.__name__}')
@@ -159,7 +166,7 @@ def main():
     else:
         peft_config = None
     model = build_hf_or_peft_model(
-        args.base_model, accelerator, args.dtype, 
+        args.base_model, accelerator, TORCH_DTYPE_MAP[args.dtype], 
         peft_config=peft_config
     )
     # load saved state dict
@@ -173,6 +180,12 @@ def main():
     # resize model embedding if necessary
     smart_resize_embeddings(tokenizer, model, logger)
     accelerator.wait_for_everyone()
+    # logger.log(f'{model.get_input_embeddings().weight.shape}', main_only = False)
+    # exit()
+    # batch = collate_fn([dataset[i] for i in range(5)])
+    # logger.log(str(batch['input_ids'].max()), main_only = False)
+    # print(model.transformer.wte(batch['input_ids'].cuda()).shape)
+    # exit()
 
     # build optimizer
     optimizer = get_smart_optimizer(model, args.lr, args.weight_decay)

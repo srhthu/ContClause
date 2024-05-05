@@ -8,6 +8,8 @@ import re
 import string
 import json
 
+from typing import Tuple
+
 def normalize_answer(s):
     """Lower text and remove punctuation, articles and extra whitespace."""
 
@@ -31,6 +33,15 @@ def get_tokens(s):
     if not s:
         return []
     return normalize_answer(s).split()
+
+def get_point_counts(text_gold, text_pred) -> Tuple[int, int, int]:
+    """Return num of gold tokens, pred tokens, and true positive tokens"""
+    gold_toks = get_tokens(text_gold)
+    pred_toks = get_tokens(text_pred)
+    common = collections.Counter(gold_toks) & collections.Counter(pred_toks)
+    num_same = sum(common.values())
+
+    return len(gold_toks), len(pred_toks), num_same
 
 def compute_f1_iou_metrics(a_gold, a_pred):
     """

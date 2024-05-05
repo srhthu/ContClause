@@ -1,7 +1,7 @@
 import json
 import pickle
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 def make_parent_dir(path):
     """Make the parent dir of path"""

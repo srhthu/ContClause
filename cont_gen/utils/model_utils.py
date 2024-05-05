@@ -8,6 +8,7 @@ from transformers import (
 )
 import accelerate
 from accelerate import Accelerator
+from accelerate.utils import DistributedType
 from peft import  (
     LoraConfig, get_peft_model, PeftModel
 )
@@ -30,9 +31,16 @@ def build_hf_or_peft_model(
     config = AutoConfig.from_pretrained(base_model, trust_remote_code = True)
     torch_dtype = torch_dtype if isinstance(torch_dtype, torch.dtype) \
                     else TORCH_DTYPE_MAP[torch_dtype]
+    
+    # For model parallel, set device_map to 'auto'
+    if accelerator.state.distributed_type == DistributedType.NO:
+        device_map = 'auto'
+    else:
+        device_map = accelerator.local_process_index
+
     kws = dict(
         torch_dtype = torch_dtype,
-        device_map = accelerator.local_process_index,
+        device_map = device_map,
         trust_remote_code = True
     )
     is_zero3 = False if accelerator.state.deepspeed_plugin is None else \
