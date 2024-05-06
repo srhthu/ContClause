@@ -32,12 +32,18 @@ class SFT_Builder:
     def __init__(self, prompt, clause_info: pd.DataFrame, all_para_data, cut_func):
         self.prompt = prompt
         self.clause_info = [row for _, row in clause_info.iterrows()]
+        self.cut_func = cut_func
+        self.set_para_data(all_para_data)
+    
+    def set_para_data(self, all_para_data):
+        """Support late initialize para data."""
+        if all_para_data is None:
+            return
         self.all_para_data = all_para_data
         self.title2para_text = {
             cont['title']: [para_d['text'] for para_d in cont['paras']] 
                 for cont in all_para_data}
-        self.cut_func = cut_func
-    
+
     def __call__(self, meta_data: dict):
         clause_text = self.title2para_text[meta_data['title']][meta_data['para_idx']]
         cinfo = self.clause_info[meta_data['q_id']]
@@ -83,9 +89,9 @@ class SFT_Builder_YesNo_Natural(SFT_Builder):
         else:
             return 'There is no such clause.'
 
-def process(builder:SFT_Builder, meta_df:pd.DataFrame):
+def process(builder:SFT_Builder, meta_df:pd.DataFrame, show_bar = True):
     all_data = []
-    for _, row in tqdm(list(meta_df.iterrows())):
+    for _, row in tqdm(list(meta_df.iterrows()), disable = not show_bar):
         row = row.to_dict()
         source, target = builder(row)
         pro_data = {

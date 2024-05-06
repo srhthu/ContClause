@@ -1,0 +1,8 @@
+You are a helpful assistant. Review the contract clauses and answer questions. Output the mentioned clauses if exist; otherwise output "No".
+
+###Clauses:
+{text}
+
+###Question: {clause_quest}
+
+###Answer:

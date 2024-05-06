@@ -22,7 +22,7 @@ from cont_gen.utils import load_json, load_jsonl, save_jsonl
 
 class CUAD_Basic:
     """
-    Hold basic information of cuad data
+    Hold basic information of cuad data, including train and test split.
     """
     def __init__(self, 
                  clause_info_path, 
@@ -40,6 +40,7 @@ class CUAD_Basic:
 
 
 class MetaSFT_Train_Builder:
+    """Functions to build training meta data, including negative sampling."""
     meta_columns = ['title', 'para_idx', 'q_id', 'answers']
 
     @staticmethod
@@ -63,7 +64,7 @@ class MetaSFT_Train_Builder:
 
         total_df = pd.concat([pos_df, neg_q2c_df, neg_c2q_df], axis = 0)
 
-        return total_df.reset_index()
+        return total_df.reset_index(drop = True)
     
     @staticmethod
     def get_pos(total_para_data, label_ids)->pd.DataFrame:
@@ -140,7 +141,8 @@ class MetaSFT_Train_Builder:
         return pd.DataFrame(neg_samples, columns = MetaSFT_Train_Builder.meta_columns)
 
 class MetaSFT_Test_Builder:
-    meta_columns = ['title', 'para_idx', 'q_id', 'answers', 'small']
+    """Functions to build test data, including partitioning into a small test set."""
+    meta_columns = ['title', 'para_idx', 'q_id', 'answers', 'type']
 
     @staticmethod
     def build_test_and_small(total_para_data, label_ids, neg_ratio: float = 0.1):
@@ -243,7 +245,7 @@ class OOD_Builder:
         test_df = MetaSFT_Test_Builder.build_test_and_small(tot_para_data, self.test_labels, neg_ratio = 0.1)
 
         print(f'Total test: {len(test_df)}. Small types:')
-        stat = test_df['small'].value_counts()
+        stat = test_df['type'].value_counts()
         print(stat)
         
         test_df.to_csv(Path(self.output_dir) / 'test_meta_ood.csv', index = False)
@@ -252,7 +254,7 @@ class OOD_Builder:
         test_id_df = MetaSFT_Test_Builder.build_test_and_small(tot_para_data, self.train_labels, neg_ratio = 0.1)
 
         # print(f'Total test (ID): {len(test_id_df)}. Small types:')
-        # stat = test_id_df['small'].value_counts()
+        # stat = test_id_df['type'].value_counts()
         # print(stat)
         
         # test_id_df.to_csv(Path(self.output_dir) / 'test_meta_id.csv', index = False)
