@@ -100,7 +100,8 @@ def main():
     # Build tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
     if "pad_token" not in tokenizer.special_tokens_map:
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        # tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        tokenizer.pad_token = tokenizer.eos_token
     
     model = load_hf_model_from_checkpoint(args.ckpt_dir, accelerator, args.dtype)
     

@@ -40,19 +40,27 @@ def load_train_dataset(args, tokenizer: PreTrainedTokenizer):
 
 def build_model(args, accelerator, logger):
     if args.lora:
+        if args.lora_all_linear:
+            target_modules = 'all-linear'
+        else:
+            target_modules = args.__dict__.get('lora_target_modules', None)
         peft_config = LoraConfig(
-            r = args.lora_r, lora_alpha = args.lora_alpha,
-            target_modules = args.lora_target_modules,
+            r = args.lora_r, 
+            lora_alpha = args.lora_alpha,
+            target_modules = target_modules,
             lora_dropout=args.lora_dropout,
             bias = "none"
         )
         # task_type will be configured later
     else:
         peft_config = None
+    
     model = build_hf_or_peft_model(
         args.base_model, accelerator, args.dtype, 
+        quantization=args.quantization,
         peft_config=peft_config
     )
+
     # load saved state dict
     if args.saved_model:
         logger.log(f'Load saved model parameters from: {args.saved_model}')
@@ -73,7 +81,7 @@ def get_parser():
 
     # data args
     parser.add_argument('--data_path', help = 'prompt file path')
-    parser.add_argument('--max_length', type = int, default = 512, 
+    parser.add_argument('--max_length', type = int, default = None, 
                         help = 'max length for both source and target text.')
     parser.add_argument('--labels_on_full', action = 'store_true')
 
@@ -82,9 +90,12 @@ def get_parser():
     parser.add_argument('--saved_model', help = 'path of saved model state dict',
                         nargs='?', const = None, default = None)
     parser.add_argument('--dtype', choices = ['fp16', 'bf16', 'fp32'], default = 'bf16')
+    parser.add_argument('--quantization', action = 'store_true', help = 'quantize to 4bit')
     parser.add_argument('--lora', action = 'store_true', help = 'use lora adapter')
-    parser.add_argument('--lora_r', type = int, default=8)
+    parser.add_argument('--lora_r', type = int, default=16)
     parser.add_argument('--lora_alpha', type = int, default=16)
+    parser.add_argument('--lora_all_linear', action = 'store_true', 
+                        help = 'add lora to all linear layers')
     parser.add_argument('--lora_target_modules', nargs='+', default = None)
     parser.add_argument('--lora_dropout', type = float, default = 0.05)
 
@@ -134,7 +145,8 @@ def main():
     # Build tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.base_model, trust_remote_code = True)
     if "pad_token" not in tokenizer.special_tokens_map:
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        # tokenizer.add_special_tokens({'pad_token': '[PAD]'}) # this is not good
+        tokenizer.pad_token = tokenizer.eos_token
     
     # Build dataset
     is_seq2seq = ('t5' in args.base_model)

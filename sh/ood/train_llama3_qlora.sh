@@ -3,8 +3,11 @@ weight_decay=0.0
 tbs=16
 lr=1e-5
 
-tk_name=mistral
-base_model='mistralai/Mistral-7B-v0.1'
+# tk_name=llama2
+# base_model='meta-llama/Llama-2-7b-hf'
+
+tk_name=llama3
+base_model='meta-llama/Meta-Llama-3-8B'
 
 for pmt_name in pmt_01; do
     for split_name in seed89_tr29; do
