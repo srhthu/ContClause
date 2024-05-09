@@ -349,7 +349,10 @@ class Predictor:
                 preds = self.compute_preds_fn(model, batch)
             device_sample_preds = self.batch_result_to_samples(preds)
             
-            gathered_preds = self.gather_object(device_sample_preds)
+            if accelerator.state.distributed_type == DistributedType.NO:
+                gathered_preds = [device_sample_preds]
+            else:
+                gathered_preds = self.gather_object(device_sample_preds)
             if accelerator.is_main_process:
                 for dev_preds in gathered_preds:
                     for sample_pred in dev_preds:

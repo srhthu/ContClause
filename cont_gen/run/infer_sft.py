@@ -14,13 +14,13 @@ from transformers import (
 )
 from accelerate import Accelerator
 
-from cont_gen.utils.model_utils import load_hf_model_from_checkpoint
+from cont_gen.utils.model_utils import load_hf_model_from_checkpoint, get_model_path_from_ckpt
 from cont_gen.data_loader.cuad_prompt import SFT_Padding
 from cont_gen.data_loader.cuad_sft import CUAD_SFT_Cached, CUAD_SFT_Filter_Type
 from cont_gen.trainer.train_only_accelerate import Predictor
-from cont_gen.utils import save_jsonl
+from cont_gen.utils import save_jsonl, get_ckpt_paths
 
-MAX_NEW_TOKENS = 512
+MAX_NEW_TOKENS = 600
 
 def load_test_dataset(args, tokenizer: PreTrainedTokenizer, is_seq2seq, part):
     """
@@ -80,8 +80,10 @@ def get_args():
     parser.add_argument('--part', default = 'sampled',
                         help = 'which part to load based on type')
     parser.add_argument('--save_path')
-    parser.add_argument('--base_model')
-    parser.add_argument('--ckpt_dir', help = 'directory of model checkpoint')
+    parser.add_argument('--is_seq2seq', action = 'store_true')
+    parser.add_argument('--base_model', help = 'specify base model. Mostly do not need specify')
+    parser.add_argument('--ckpt_dir', help = 'directory of model checkpoint or peft checkpoint')
+    parser.add_argument('--run_dir', help = 'infer of all checkpoints udner run_dir')
     parser.add_argument('--dtype', choices = ['fp16', 'fp32', 'bf16'], default = 'fp32')
     parser.add_argument('--batch_size', default = 1, type = int)
     parser.add_argument('--max_length', default = 1000, type = int)
@@ -89,35 +91,15 @@ def get_args():
     return parser
 
 
-def main():
-    args = get_args().parse_args()
-    accelerator = Accelerator()
-
-    if args.save_path is None:
-        spl_name = Path(args.data_path).stem.split('_')[-1]
-        args.save_path = Path(args.ckpt_dir) / f'predictions_{spl_name}_{args.part}.jsonl'
-
-    # Build tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-    if "pad_token" not in tokenizer.special_tokens_map:
-        # tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-        tokenizer.pad_token = tokenizer.eos_token
+def handle_one_ckpt(ckpt, dataset, model, predictor, accelerator, tokenizer, save_path = None, save_name = None):
+    """
+    Do inference and save results.
+    """
+    if save_path is None:
+        assert save_name is not None
+        save_path = Path(ckpt) / save_name
     
-    model = load_hf_model_from_checkpoint(args.ckpt_dir, accelerator, args.dtype)
-    
-    # Dataset
-    is_seq2seq = model.config.is_encoder_decoder
-    dataset = load_test_dataset(args, tokenizer, is_seq2seq, args.part)
-
-    # Generate function
-    generator = SimpleGenerator(tokenizer, is_encoder_decoder = is_seq2seq)
-
     # Predict
-    predictor = Predictor(
-        accelerator, args.batch_size, 
-        compute_preds_fn = generator, 
-        collate_fn = SFT_Padding(tokenizer.pad_token_id, pad_side = 'left'),
-    )
     all_preds = predictor.predict(model, dataset)
     
     # Post-process results
@@ -141,7 +123,56 @@ def main():
             all_save.append(save_d)
 
         # save
-        save_jsonl(all_save, args.save_path)
+        save_jsonl(all_save, save_path)
+    
+
+def main():
+    args = get_args().parse_args()
+    accelerator = Accelerator()
+
+    # determin ckpt dirs
+    if args.ckpt_dir is not None:
+        ckpts = [args.ckpt_dir]
+    else:
+        assert args.run_dir is not None
+        ckpts = [str(k) for k in get_ckpt_paths(args.run_dir)]
+
+    save_name  = None
+    if args.save_path is None:
+        spl_name = Path(args.data_path).stem.split('_')[-1]
+        save_name = f'predictions_{spl_name}_{args.part}.jsonl'
+
+    # Build tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.base_model if args.base_model else get_model_path_from_ckpt(ckpts[0]))
+    if "pad_token" not in tokenizer.special_tokens_map:
+        # tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Dataset
+    dataset = load_test_dataset(args, tokenizer, args.is_seq2seq, args.part)
+
+    # Generate function
+    generator = SimpleGenerator(tokenizer, is_encoder_decoder = args.is_seq2seq)
+
+    # Predictor
+    predictor = Predictor(
+        accelerator, args.batch_size, 
+        compute_preds_fn = generator, 
+        collate_fn = SFT_Padding(tokenizer.pad_token_id, pad_side = 'left'),
+    )
+
+    
+
+    for ckpt in ckpts:
+        print(f'Handle checkpoint: {str(ckpt)}')
+        model = load_hf_model_from_checkpoint(ckpt, accelerator, args.dtype)
+
+        handle_one_ckpt(ckpt, dataset, model, predictor, accelerator, tokenizer, 
+                        save_name = save_name)
+        
+        del model
+
+    
 
 if __name__ == '__main__':
     main()

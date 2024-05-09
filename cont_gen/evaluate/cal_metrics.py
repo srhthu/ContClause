@@ -57,7 +57,7 @@ def cal_collective_point_metrics(
         return_whole = False
         ):
     """
-    collective metrics: first sum then cal metrics (docsum)
+    collective metrics: first sum over all docs then cal metrics (docsum)
     pointwise metrics: average metrics of each document (docave)
     """
     ground_df = ground_df[['title', 'para_idx', 'answers']]

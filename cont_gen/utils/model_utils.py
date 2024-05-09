@@ -1,5 +1,5 @@
 """Utilities for build, load and prepare model"""
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 from pathlib import Path
 import torch
 from transformers import (
@@ -81,6 +81,17 @@ def build_hf_or_peft_model(
         model.print_trainable_parameters()
     
     return model
+
+def get_model_path_from_ckpt(ckpt_dir)-> Optional[str]:
+    if (Path(ckpt_dir) / 'config.json').exists():
+        hf_cfg_dt = load_json(Path(ckpt_dir) / 'config.json')
+        return hf_cfg_dt['_name_or_path']
+    elif (Path(ckpt_dir) / 'adapter_config.json').exists():
+        adap_cfg_dt = load_json(Path(ckpt_dir) / 'adapter_config.json')
+        return adap_cfg_dt['base_model_name_or_path']
+    else:
+        return None
+
 
 def load_hf_model_from_checkpoint(ckpt_dir, accelerator: Accelerator, torch_dtype: Union[str, torch.dtype], base_model = None):
     """
