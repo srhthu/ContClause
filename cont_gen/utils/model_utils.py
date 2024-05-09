@@ -40,7 +40,19 @@ def build_hf_or_peft_model(
     ## Handle device_map based on distributed_type
     if accelerator.state.distributed_type == DistributedType.NO:
         # model parallelism
-        device_map = 'auto'
+        # Here we customize device_map for llama3
+        if torch.cuda.device_count() == 2:
+            device_map = {
+                'model.embed_tokens': 0,
+                'model.norm': 1,
+                'lm_head': 1
+            }
+            device_map.update({f'model.layers.{i}': 0 if i < 16 else 1 for i in range(32)})
+        elif torch.cuda.device_count() == 1:
+            device_map = {"":0}
+        else:
+            device_map = 'auto'
+
     else:
         device_map = accelerator.local_process_index
 

@@ -15,7 +15,7 @@ from accelerate import PartialState
 from typing import List, Any, Optional
 
 from cont_gen.utils import load_jsonl, load_pickle, save_pickle
-from cont_gen.data_process.utils import tokenize_wo_eos
+from cont_gen.data_process.utils import tokenize_wo_eos, tokenize_wo_bos
 
 class CachedDataset(Dataset):
     SMALL_NUM = 200
@@ -42,6 +42,7 @@ class CachedDataset(Dataset):
             self.load_or_process_data()
 
     def load_or_process_data(self):
+        """Get samples from data"""
         if self.cache_dir is None:
             return
         # check whether cache exists
@@ -86,7 +87,10 @@ class CUAD_SFT_Cached(CachedDataset):
         is_test: for test data, do not provide target sequence
         small: True for debug mode with few samples
     """
-    version = "1.0"
+    version = "1.1"
+    """
+    ver 1.1: Fix the bug of additional bos token before target text for decoder-only model.
+    """
     SMALL_NUM = 200
     def __init__(
         self, path, tokenizer: PreTrainedTokenizer,
@@ -145,7 +149,10 @@ class CUAD_SFT_Cached(CachedDataset):
                                       **src_tk_args)
 
         tgt_tk_args = self.get_tokenize_args(self.max_tgt_length)
-        tgt_enc = tokenizer(prompt_data['target'], **tgt_tk_args)
+        if self.is_seq2seq:
+            tgt_enc = tokenizer(prompt_data['target'], **tgt_tk_args)
+        else:
+            tgt_enc = tokenize_wo_bos(tokenizer, prompt_data['target'], **tgt_tk_args)
 
         if self.is_seq2seq:
             return{

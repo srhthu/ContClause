@@ -58,6 +58,17 @@ def tokenize_wo_eos(tokenizer: PreTrainedTokenizer, text, **kws):
         enc.attention_mask = enc.attention_mask[:-1]
     return enc
 
+def tokenize_wo_bos(tokenizer: PreTrainedTokenizer, text, **kws):
+    """tokenize the text without add bos_token"""
+    enc = tokenizer(text, **kws)
+    if (
+        "eos_token" in tokenizer.special_tokens_map
+        and enc.input_ids[0] == tokenizer.bos_token_id
+    ):
+        enc.input_ids = enc.input_ids[1:]
+        enc.attention_mask = enc.attention_mask[1:]
+    return enc
+
 def ommit_middle(text, tokenizer, max_len):
     """If num of tokens > max_len, only keep the first and tail max_len/2 tokens"""
     enc = tokenizer(text)
