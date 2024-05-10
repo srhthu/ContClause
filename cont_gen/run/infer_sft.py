@@ -43,6 +43,7 @@ def load_test_dataset(args, tokenizer: PreTrainedTokenizer, is_seq2seq, part):
         args.data_path,
         tokenizer,
         is_seq2seq = is_seq2seq,
+        is_chat = args.is_chat,
         cache_dir = Path(args.data_path).parent / 'cache',
         max_src_length = args.max_length,
         is_test = True,
@@ -80,6 +81,7 @@ def get_args():
     parser.add_argument('--part', default = 'sampled',
                         help = 'which part to load based on type')
     parser.add_argument('--save_path')
+    parser.add_argument('--is_chat', action = 'store_true')
     parser.add_argument('--is_seq2seq', action = 'store_true')
     parser.add_argument('--base_model', help = 'specify base model. Mostly do not need specify')
     parser.add_argument('--ckpt_dir', help = 'directory of model checkpoint or peft checkpoint')
@@ -98,6 +100,10 @@ def handle_one_ckpt(ckpt, dataset, model, predictor, accelerator, tokenizer, sav
     if save_path is None:
         assert save_name is not None
         save_path = Path(ckpt) / save_name
+
+    if save_path.exists():
+        print('predictions exist.')
+        return
     
     # Predict
     all_preds = predictor.predict(model, dataset)

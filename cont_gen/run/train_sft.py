@@ -29,6 +29,7 @@ def load_train_dataset(args, tokenizer: PreTrainedTokenizer):
         args.data_path,
         tokenizer,
         is_seq2seq = is_seq2seq,
+        is_chat = args.is_chat,
         cache_dir = Path(args.data_path).parent / 'cache',
         max_src_length = args.max_length,
         max_tgt_length = args.max_length,
@@ -84,6 +85,8 @@ def get_parser():
     parser.add_argument('--max_length', type = int, default = None, 
                         help = 'max length for both source and target text.')
     parser.add_argument('--labels_on_full', action = 'store_true')
+    parser.add_argument('--is_chat', action = 'store_true', 
+                        help = 'whether apply chat template to data')
 
     # model args
     parser.add_argument('--base_model')

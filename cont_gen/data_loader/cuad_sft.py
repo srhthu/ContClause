@@ -5,6 +5,7 @@ Support cache managment.
 """
 
 import json
+from argparse import Namespace
 import re
 from tqdm import tqdm
 from pathlib import Path
@@ -44,6 +45,8 @@ class CachedDataset(Dataset):
     def load_or_process_data(self):
         """Get samples from data"""
         if self.cache_dir is None:
+            data_to_process = self.data if not self.small else self.data[:self.SMALL_NUM]
+            self.samples = [self.process(k) for k in tqdm(data_to_process, ncols = 80)]
             return
         # check whether cache exists
         cache_path = Path(self.cache_dir) / self.cache_name
@@ -95,6 +98,7 @@ class CUAD_SFT_Cached(CachedDataset):
     def __init__(
         self, path, tokenizer: PreTrainedTokenizer,
         is_seq2seq: bool,
+        is_chat: bool = False,
         cache_dir: Optional[str] = None,
         max_src_length: Optional[int] = None, 
         max_tgt_length: Optional[int] = None,
@@ -105,6 +109,7 @@ class CUAD_SFT_Cached(CachedDataset):
         self.data_path = path
         self.data = list(filter(self.filter_func, load_jsonl(path)))
 
+        self.is_chat = is_chat
         self.tokenizer = tokenizer
         self.is_seq2seq = is_seq2seq
         self.max_src_length = max_src_length
@@ -123,7 +128,8 @@ class CUAD_SFT_Cached(CachedDataset):
         data_name = Path(self.data_path).name
         debug_str = 'debug_' if self.small else ''
         tk_name = self.tokenizer.name_or_path.rstrip('/').split('/')[-1]
-        cache_name = f'cached_{debug_str}{data_name}_{tk_name}_v{self.version}.pkl'
+        chat = 'chat' if self.is_chat else ''
+        cache_name = f'cached_{debug_str}{data_name}_{tk_name}_v{self.version}{chat}.pkl'
         return cache_name
     
     @staticmethod
@@ -139,14 +145,24 @@ class CUAD_SFT_Cached(CachedDataset):
         """
         tokenizer = self.tokenizer
 
+        # handle chat source data
+        source = prompt_data['source']
         src_tk_args = self.get_tokenize_args(self.max_src_length)
-        if self.is_seq2seq:
-            # do not remove eos token
-            src_enc = tokenizer(prompt_data['source'], **src_tk_args)
+        if self.is_chat:
+            msg = [{"role": "user", "content": source},]
+            src_ids = tokenizer.apply_chat_template(
+                msg, tokenize=True, add_generation_prompt=True,
+                **src_tk_args
+            )
+            src_mask = [1] * len(src_ids)
+            src_enc = Namespace(input_ids = src_ids, attention_mask = src_mask)
         else:
-            # for decoder-only model, do not add eos token to source
-            src_enc = tokenize_wo_eos(tokenizer, prompt_data['source'],
-                                      **src_tk_args)
+            if self.is_seq2seq:
+                # do not remove eos token
+                src_enc = tokenizer(source, **src_tk_args)
+            else:
+                # for decoder-only model, do not add eos token to source
+                src_enc = tokenize_wo_eos(tokenizer, source,**src_tk_args)
 
         tgt_tk_args = self.get_tokenize_args(self.max_tgt_length)
         if self.is_seq2seq:

@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 from IPython.display import display
 
-from cont_gen.utils import load_jsonl, get_ckpt_paths
-
-
+from cont_gen.utils import load_jsonl, get_ckpt_paths, save_json
+from cont_gen.evaluate.cal_metrics import get_overall_metrics
 
 class RunManager:
     """
@@ -101,3 +100,48 @@ class RunManager:
     def print_no_pred_runs(self):
         part = self.runs[self.runs['has_pred'] == 0]
         display(part)
+    
+    def cal_metrics_for_ckpt(self, ckpt, ground_df, parse_fn):
+        ckpt = Path(ckpt)
+        if not ckpt.exists():
+            return
+
+        pred_all = self.exist(ckpt / f'predictions_{self.dist}_all.jsonl')
+        pred_sampled = self.exist(ckpt / f'predictions_{self.dist}_sampled.jsonl')
+
+        ov_all_path = ckpt / f'ov_metrics_{self.dist}_all.csv'
+        ov_sampled_path = ckpt / f'ov_metrics_{self.dist}_sampled.csv'
+
+
+        if pred_all is not None:
+            if ov_all_path.exists():
+                return
+            pred_all_df = pd.DataFrame(load_jsonl(pred_all))
+            pred_sampled_df = pred_all_df[pred_all_df['type'] > 0]
+
+            # handle all metrics
+            ov_mets_all, detail_df_all = get_overall_metrics(ground_df, pred_all_df, parse_fn)
+            save_json(ov_mets_all, ov_all_path)
+            detail_df_all.to_csv(ckpt / f'detail_metrics_{self.dist}_all.csv', index = False)
+
+            # handle sampled metrics
+            ov_mets_sampled, detail_df_sampled = get_overall_metrics(ground_df, pred_sampled_df, parse_fn)
+            save_json(ov_mets_sampled, ov_sampled_path)
+            detail_df_sampled.to_csv(ckpt / f'detail_metrics_{self.dist}_sampled.csv', index = False)
+            
+        elif pred_sampled is not None:
+            if ov_sampled_path.exists():
+                return
+            pred_sampled_df = pd.DataFrame(load_jsonl(pred_sampled))
+            ov_mets_sampled, detail_df_sampled = get_overall_metrics(ground_df, pred_sampled_df, parse_fn)
+            save_json(ov_mets_sampled, ov_sampled_path)
+            detail_df_sampled.to_csv(ckpt / f'detail_metrics_{self.dist}_sampled.csv', index = False)
+        
+        else:
+            return
+    
+    def cal_metrics_for_run(self, run_path, ground_df, parse_fn):
+        ckpts = get_ckpt_paths(run_path)
+        for ckpt in ckpts:
+            print(f'Calcualte for {ckpt.name}')
+            self.cal_metrics_for_ckpt(ckpt, ground_df, parse_fn)

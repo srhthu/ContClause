@@ -24,6 +24,12 @@ def save_jsonl(data: List, path):
         for d in data:
             f.write(json.dumps(d, ensure_ascii=False) + '\n')
 
+def save_json(data, path, indent = 4, sort_keys = True):
+    """Save data to path and Create parent dir if not exist"""
+    make_parent_dir(path)
+    with open(path, 'w') as f:
+        json.dump(data, f, ensure_ascii = False, indent = indent, sort_keys = sort_keys)
+
 def save_jsonl_append(data, path):
     """Append json data to existing path"""
     with open(path, 'a', encoding = 'utf8') as f:
