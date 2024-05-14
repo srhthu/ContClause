@@ -57,10 +57,16 @@ class SimpleGenerator:
     def __init__(self, tokenizer, is_encoder_decoder):
         self.tokenizer = tokenizer
         self.is_encoder_decoder = is_encoder_decoder
+
+        if 'Meta-Llama-3-8B-Instruct' in tokenizer.name_or_path:
+            eos_token_id = [128001, 128009]
+        else:
+            eos_token_id = tokenizer.eos_token_id
+
         self.gen_config = GenerationConfig(
             max_new_tokens = MAX_NEW_TOKENS,
             do_sample = False,
-            eos_token_id = tokenizer.eos_token_id,
+            eos_token_id = eos_token_id,
             pad_token_id = tokenizer.pad_token_id
         )
     def __call__(self, model: PreTrainedModel, batch):
