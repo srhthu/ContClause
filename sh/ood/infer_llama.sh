@@ -8,7 +8,7 @@ export HF_HUB_CACHE=/next_share/hf_cache/hub
 
 for pmt_name in pmt_01_yes_no;
 do
-CUDA_VISIBLE_DEVICES=1  python \
+CUDA_VISIBLE_DEVICES=3  python \
 -m cont_gen.run.infer_sft \
 --data_path data/ood_split/${split}/${tk_name}/${pmt_name}/test_data_${ood}.jsonl \
 --part sampled \

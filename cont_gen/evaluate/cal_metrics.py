@@ -158,9 +158,11 @@ def get_overall_metrics(ground_df: pd.DataFrame, pred_df: pd.DataFrame, parse_fn
         
         miss = [k for k in gr_rec if k not in pr_rec]
         if len(miss) > 0:
-            print(f'Error: {len(miss)} samples in ground_df are not found in pred_df')
+            raise ValueError(f'Error: {len(miss)} samples in ground_df'
+                             f'({len(gr_rec)}) are not found in pred_df({len(pr_rec)})')
         
         # Parse prediction
+        pred_df = pred_df.copy()
         pred_df['prediction'] = pred_df['prediction'].apply(parse_fn)
 
         count_info = get_counts(ground_df, pred_df)
