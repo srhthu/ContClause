@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 from IPython.display import display
 
-from cont_gen.utils import load_jsonl, get_ckpt_paths, save_json
+from cont_gen.utils import load_jsonl, get_ckpt_paths, save_json, load_json
 from cont_gen.evaluate.cal_metrics import get_overall_metrics
 
 class RunManager:
@@ -96,10 +96,16 @@ class RunManager:
         assert len(df.columns) == len(row), f'{len(df.columns)} != {len(row)}'
         df.loc[len(df)] = row
 
-
-    def print_no_pred_runs(self):
-        part = self.runs[self.runs['has_pred'] == 0]
-        display(part)
+    @property
+    def ov_all_fn(self):
+        return f'ov_metrics_{self.dist}_all.csv'
+    
+    @property
+    def ov_sampled_fn(self):
+        return f'ov_metrics_{self.dist}_sampled.csv'
+    
+    def ov_fn(self, part):
+        return f'ov_metrics_{self.dist}_{part}.csv'
     
     def cal_metrics_for_ckpt(self, ckpt, ground_df, parse_fn):
         ckpt = Path(ckpt)
@@ -109,12 +115,12 @@ class RunManager:
         pred_all = self.exist(ckpt / f'predictions_{self.dist}_all.jsonl')
         pred_sampled = self.exist(ckpt / f'predictions_{self.dist}_sampled.jsonl')
 
-        ov_all_path = ckpt / f'ov_metrics_{self.dist}_all.csv'
-        ov_sampled_path = ckpt / f'ov_metrics_{self.dist}_sampled.csv'
+        ov_all_path = ckpt / self.ov_fn('all')
+        ov_sampled_path = ckpt / self.ov_fn('sampled')
 
 
         if pred_all is not None:
-            if ov_all_path.exists():
+            if ov_all_path.exists() and ov_sampled_path.exists():
                 return
             pred_all_df = pd.DataFrame(load_jsonl(pred_all))
             pred_sampled_df = pred_all_df[pred_all_df['type'] > 0]
@@ -145,3 +151,39 @@ class RunManager:
         for ckpt in ckpts:
             print(f'Calcualte for {ckpt.name}')
             self.cal_metrics_for_ckpt(ckpt, ground_df, parse_fn)
+    
+    def get_run_metrics(self, run_path, part = 'sampled'):
+        ckpts = get_ckpt_paths(run_path)
+        steps = []
+        all_res = []
+        for ckpt in ckpts:
+            met_path = ckpt / self.ov_fn(part)
+            if met_path.exists():
+                r = load_json(met_path)
+                all_res.append(r)
+                steps.append(int(ckpt.name.split('-')[-1]))
+        return steps, pd.DataFrame(all_res)
+    
+    def get_runs_to_cal_met(self):
+        """
+        Return runs that has prediction but do not have metrics
+        """
+        ckpt_df = self.ckpt_details
+        ckpt_df = ckpt_df[
+            ckpt_df['metric_sampled'].isnull() 
+            & ~(ckpt_df['pred_all'].isnull() 
+                & ckpt_df['pred_sampled'].isnull())
+            ]
+        run_paths = set(ckpt_df['run_path'].to_list())
+        return run_paths
+    
+    def get_runs_to_infer(self):
+        """
+        Return runs that have checkpoints with no predictions
+        """
+        ckpt_df = self.ckpt_details
+        ckpt_df = ckpt_df[
+            ckpt_df['pred_all'].isnull() & ckpt_df['pred_sampled'].isnull()]
+        run_paths = set(ckpt_df['run_path'].to_list())
+        return run_paths
+
