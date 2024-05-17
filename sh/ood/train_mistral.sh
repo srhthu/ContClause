@@ -7,7 +7,7 @@ tk_name=mistral
 base_model='mistralai/Mistral-7B-v0.1'
 
 for pmt_name in pmt_01 pmt_01_yes_no; do
-    for split_name in seed42_tr29; do
+    for split_name in seed89_tr29 seed128_tr29; do
         HF_HUB_CACHE=/next_share/hf_cache/hub CUDA_VISIBLE_DEVICES=2,3 python \
         -m cont_gen.run.train_sft \
         --output_dir runs/ood/${tk_name}/${split_name}/${pmt_name}_all_lr${lr}_bs${tbs}_wd${weight_decay} \

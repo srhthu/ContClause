@@ -1,6 +1,6 @@
 model_size=large # base, large, xl, xxl
 split_name=seed42_tr29
-pmt_name=pmt_01 # pmt_01 pmt_01_yes_no
+pmt_name=pmt_01_yes_no # pmt_01 pmt_01_yes_no
 weight_decay=0.0
 tbs=16
 lr=1e-4

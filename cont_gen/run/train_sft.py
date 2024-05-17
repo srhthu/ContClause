@@ -40,6 +40,7 @@ def load_train_dataset(args, tokenizer: PreTrainedTokenizer):
     return dataset
 
 def build_model(args, accelerator, logger):
+    """Build model, handle lora, quantization and gradient checkpointing"""
     if args.lora:
         if args.lora_all_linear:
             target_modules = 'all-linear'
@@ -69,6 +70,12 @@ def build_model(args, accelerator, logger):
             state_dict = torch.load(f, map_location = accelerator.device)
         model.load_state_dict(state_dict)
         del state_dict
+    
+    # gradient checkpointing
+    if args.gradient_checkpointing:
+        logger.log(f'Enable gradient checkpointing...')
+        model.enable_input_require_grads()
+        model.gradient_checkpointing_enable()
 
     return model
 
@@ -94,6 +101,8 @@ def get_parser():
                         nargs='?', const = None, default = None)
     parser.add_argument('--dtype', choices = ['fp16', 'bf16', 'fp32'], default = 'bf16')
     parser.add_argument('--quantization', action = 'store_true', help = 'quantize to 4bit')
+    parser.add_argument('--gradient_checkpointing', action = 'store_true', 
+                        help = 'enable gradient checkpointing')
     parser.add_argument('--lora', action = 'store_true', help = 'use lora adapter')
     parser.add_argument('--lora_r', type = int, default=16)
     parser.add_argument('--lora_alpha', type = int, default=16)
@@ -124,6 +133,10 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
+    # We should set the env var of deepspeed before init partialstate
+    if args.ds_config is not None:
+        os.environ['ACCELERATE_USE_DEEPSPEED'] = 'true'
+
     # Initialize dist. environment
     state = PartialState()
     ## Calculate grad_acc_steps as suggested.
@@ -145,6 +158,8 @@ def main():
             f.write(args_str)
     logger.log(f'Training args:\n {args_str}')
 
+    logger.log(f'Distributed type: {accelerator.state.distributed_type}')
+
     # Build tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.base_model, trust_remote_code = True)
     if "pad_token" not in tokenizer.special_tokens_map:
@@ -165,9 +180,10 @@ def main():
     model = build_model(args, accelerator, logger)
 
     ## resize model embedding if necessary
-    smart_resize_embeddings(tokenizer, model, logger)
+    # smart_resize_embeddings(tokenizer, model, logger)
     
     accelerator.wait_for_everyone()
+
 
     ## build optimizer
     optimizer = get_smart_optimizer(model, args.lr, args.weight_decay)

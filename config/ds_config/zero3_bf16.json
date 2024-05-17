@@ -1,0 +1,26 @@
+{
+    "steps_per_print": 1000,
+    "prescale_gradients": false,
+
+    "gradient_clipping": 3.0,
+  
+    "bf16": {
+      "enabled": true,
+      "loss_scale": 0
+    },
+
+    "zero_optimization": {
+        "stage": 3,
+        "allgather_partitions": true,
+        "allgather_bucket_size": 5e8,
+        "overlap_comm": true,
+        "reduce_scatter": true,
+        "reduce_bucket_size": "auto",
+        "contiguous_gradients": true,
+        "offload_param":{
+            "device": "cpu",
+            "max_in_cpu": 1e9,
+            "pin_memory": true
+        }
+    }
+}
