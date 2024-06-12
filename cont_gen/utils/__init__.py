@@ -9,6 +9,7 @@ from .io import *
 from .plot_loss import plot_multiple_loss
 
 def get_ckpt_paths(run_dir) -> List[Path]:
+    """Return the complete path of sub dirs of run_dir"""
     run_dir = Path(run_dir)
     ckpt_dirs = list(run_dir.glob('checkpoint-*'))
     # sort by global step

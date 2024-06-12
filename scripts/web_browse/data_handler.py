@@ -7,7 +7,7 @@ from typing import List
 import pickle
 from typing import List, Dict, Tuple
 
-sys.path.insert(0, '../data/')
+sys.path.insert(0, '../data_vis/')
 from get_atom_span import get_atom_span
 
 def get_cuad_atom_span(data, pred_spans = {}, add_text = True):
@@ -63,7 +63,7 @@ class CUAD_Data:
                 is_impossible: True if there is no answer
         """
         self.history:List[int] = [] # record browse history
-        self.clause_info = json.load(open('../../data/clause_info.json'))
+        self.clause_info = json.load(open('../../data/clause/clause_info.json'))
 
 
     def get_contract(self, idx):

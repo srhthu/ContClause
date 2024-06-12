@@ -89,9 +89,11 @@ def get_args():
     parser.add_argument('--save_path')
     parser.add_argument('--is_chat', action = 'store_true')
     parser.add_argument('--is_seq2seq', action = 'store_true')
-    parser.add_argument('--base_model', help = 'specify base model. Mostly do not need specify')
+    parser.add_argument('--base_model', help = 'specify base model to load tokenizer')
     parser.add_argument('--ckpt_dir', help = 'directory of model checkpoint or peft checkpoint')
     parser.add_argument('--run_dir', help = 'infer of all checkpoints udner run_dir')
+    parser.add_argument('--save_prefix', default = '', 
+                        help = "prefix of saved file name. Targeted for model trained on all labels")
     parser.add_argument('--dtype', choices = ['fp16', 'fp32', 'bf16'], default = 'fp32')
     parser.add_argument('--batch_size', default = 1, type = int)
     parser.add_argument('--max_length', default = 1000, type = int)
@@ -107,7 +109,7 @@ def handle_one_ckpt(ckpt, dataset, model, predictor, accelerator, tokenizer, sav
         assert save_name is not None
         save_path = Path(ckpt) / save_name
 
-    if save_path.exists():
+    if Path(save_path).exists():
         print('predictions exist.')
         return
     
@@ -152,7 +154,7 @@ def main():
     save_name  = None
     if args.save_path is None:
         spl_name = Path(args.data_path).stem.split('_')[-1]
-        save_name = f'predictions_{spl_name}_{args.part}.jsonl'
+        save_name = f'{args.save_prefix}predictions_{spl_name}_{args.part}.jsonl'
 
     # Build tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.base_model if args.base_model else get_model_path_from_ckpt(ckpts[0]))
@@ -180,7 +182,8 @@ def main():
         model = load_hf_model_from_checkpoint(ckpt, accelerator, args.dtype)
 
         handle_one_ckpt(ckpt, dataset, model, predictor, accelerator, tokenizer, 
-                        save_name = save_name)
+                        save_name = save_name,
+                        save_path = args.save_path)
         
         del model
 

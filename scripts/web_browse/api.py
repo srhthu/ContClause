@@ -37,7 +37,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', action = 'store_true')
-    parser.add_argument('--port', type = int, default = 3000)
+    parser.add_argument('--port', type = int, default = 3000, help = 'default 3000')
     args = parser.parse_args()
 
     ENVS = dotenv_values('../../.env')
@@ -51,6 +51,8 @@ def main():
     else:
         path = Path(ENVS['CUAD_PATH']) / 'CUAD_v1.json'
         pred_path = None
+        if not path.exists():
+            path = Path('../../data/cuad_split/CUADv1.json')
     
     handler = CUAD_Data(path, pred_path)
 
