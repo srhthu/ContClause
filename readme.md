@@ -1,3 +1,13 @@
+## Overview of Repo
+The repo contains the following folders:
+- `config`: config file for deepspeed or prompts
+- `data`: dataset and processed data
+- `cont_gen`: the library for the whole project
+- `ood`: scripts for the OOD settihng
+- `pretrain`: old code to pre-train the model
+- `runs`: experiment results, e.g., checkpoints
+- `scripts`: script for data process, visualization, data exploration, debug ...
+- `sh`: bash scripts
 ## CUAD Data
 Data Format of the `CUAD_v1.json`:
 
