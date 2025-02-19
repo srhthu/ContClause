@@ -40,7 +40,7 @@ tar -xzf contracts.tar.gz -C cuad_contracts
 {
     "title": "the UID of the document",
     "doc_text": "the contract document", # 123
-    "qas": [ # a list of question-answer information
+    "qas": [ # full list of question-answer information
         {
             "qa_id": "the UID of the document-question pair question",
             "is_impossible":  "(`bool`) True if has answers",
@@ -62,13 +62,12 @@ Note: the **qas** contains all clause types
 {
     "title": "the UID of the document",
     "paras": [
-        # a list of paragraph data
         {
             "text": "paragraph text",
             "offset": "start index of the first character of the paragraph",
-            "qas": "same structure as cleaned data. ",
-                # remove is_impossible
-                # add q_id: clause type id
+            "qas": [],
+                # same structure as cleaned data, only keep valid qas.
+                # remove is_impossible; add 'q_id' (clause type id)
         }
     ]
 }

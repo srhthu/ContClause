@@ -12,7 +12,6 @@ from typing import List, Tuple, Dict, Optional, Union
 
 from transformers import PreTrainedTokenizerFast, AutoTokenizer
 
-from cont_gen.data_process.basic import NaturalParagraph
 from cont_gen.data_process.utils import (
     cut_spans_return_offset, 
     remove_spans_and_return_mapping,
